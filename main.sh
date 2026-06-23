@@ -18,6 +18,9 @@ log_info()    { echo -e "  ${BLUE}[i]${NC} $1"; }
 log_success() { echo -e "  ${GREEN}[✓]${NC} $1"; }
 log_error()   { echo -e "  ${RED}[✗]${NC} $1" >&2; }
 
+# ── Файл для хранения порта ─────────────────────────────────
+PORT_FILE="/opt/mtpr-simple/port"
+
 # ── Проверка root ────────────────────────────────────────────
 check_root() {
     if [ "$(id -u)" -ne 0 ]; then
@@ -26,66 +29,124 @@ check_root() {
     fi
 }
 
-# ── Проверка наличия ЛЮБОГО SYN-правила на порт 443 ────────
+# ── Определение порта из сохранённого файла ──────────────────
+get_saved_port() {
+    if [ -f "$PORT_FILE" ]; then
+        cat "$PORT_FILE"
+    else
+        echo ""
+    fi
+}
+
+save_port() {
+    echo "$1" > "$PORT_FILE"
+}
+
+# ── Проверка наличия ЛЮБОГО SYN-правила (TCP + SYN) ──────────
 is_syn_fix_installed() {
-    # Проверяем в iptables-save (ищем 443 и syn в одной строке)
-    if iptables-save 2>/dev/null | grep -iE '443.*syn|syn.*443' | grep -q .; then
+    # Проверяем в iptables-save на наличие строк с tcp и syn (регистр не важен)
+    if iptables-save 2>/dev/null | grep -iE 'tcp.*--syn|--syn.*tcp' | grep -q .; then
         return 0
     fi
     # Проверяем во всех .rules файлах в /etc/ufw/
-    if grep -rE '443.*syn|syn.*443' /etc/ufw/ --include='*.rules' 2>/dev/null | grep -q .; then
+    if grep -rE 'tcp.*--syn|--syn.*tcp' /etc/ufw/ --include='*.rules' 2>/dev/null | grep -q .; then
         return 0
     fi
     return 1
 }
 
-# ── Установка НАШЕГО SYN FIX (без удаления чужих) ──────────
+# ── Определение Telemt ──────────────────────────────────────
+detect_telemt() {
+    # Ищем процесс telemt
+    if pgrep -x telemt >/dev/null 2>&1; then
+        # Пытаемся найти конфиг
+        local configs=(
+            "/etc/telemt/telemt.toml"
+            "/etc/telemt/config.toml"
+            "/etc/telemt.toml"
+            "/opt/telemt/config.toml"
+            "/opt/telemt/telemt.toml"
+        )
+        for cfg in "${configs[@]}"; do
+            if [ -f "$cfg" ]; then
+                # Парсим порт
+                local port=$(grep -E '^port[[:space:]]*=' "$cfg" | head -1 | awk -F'=' '{print $2}' | tr -d ' "')
+                if [[ "$port" =~ ^[0-9]+$ ]]; then
+                    echo "установлен (порт $port)"
+                    return 0
+                fi
+            fi
+        done
+        echo "установлен (порт не определён)"
+        return 0
+    else
+        echo "не обнаружен"
+        return 1
+    fi
+}
+
+# ── Установка SYN FIX ──────────────────────────────────────
 install_syn_fix() {
-    log_info "Установка SYN FIX..."
+    local port
+    echo ""
+    echo -en "  ${BOLD}Введите порт для SYN FIX (по умолчанию 443):${NC} "
+    read -r port
+    if [ -z "$port" ]; then
+        port="443"
+    fi
+    if ! [[ "$port" =~ ^[0-9]+$ ]] || [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; then
+        log_error "Некорректный порт, используем 443"
+        port="443"
+    fi
+
+    log_info "Установка SYN FIX на порт $port..."
 
     # Убеждаемся, что ufw установлен и включен
     apt update
     apt install ufw -y
 
     ufw allow 22/tcp
-    ufw allow 443/tcp
+    ufw allow "$port"/tcp
 
     ufw --force enable
 
     # Добавляем наши правила в /etc/ufw/before.rules (если их там ещё нет)
     if ! grep -q 'mtpr_syn_fix' /etc/ufw/before.rules; then
         cp /etc/ufw/before.rules /etc/ufw/before.rules.bak.$(date +%s)
-        sed -i '/COMMIT/ i\
+        sed -i "/COMMIT/ i\
 # MTProxy SYN FIX by MEKO (mtpr_syn_fix)\n\
--A ufw-before-input -p tcp --dport 443 --syn -m hashlimit --hashlimit-name mtproto_443 --hashlimit-mode srcip --hashlimit-upto 54/minute --hashlimit-burst 1 --hashlimit-htable-expire 60000 --hashlimit-htable-size 32768 -m comment --comment "mtpr_syn_fix" -j ACCEPT\n\
--A ufw-before-input -p tcp --dport 443 --syn -j REJECT --reject-with tcp-reset' /etc/ufw/before.rules
+-A ufw-before-input -p tcp --dport $port --syn -m hashlimit --hashlimit-name mtproto_$port --hashlimit-mode srcip --hashlimit-upto 54/minute --hashlimit-burst 1 --hashlimit-htable-expire 60000 --hashlimit-htable-size 32768 -m comment --comment \"mtpr_syn_fix\" -j ACCEPT\n\
+-A ufw-before-input -p tcp --dport $port --syn -j REJECT --reject-with tcp-reset" /etc/ufw/before.rules
 
         # Если COMMIT не найден, добавляем в конец
         if ! grep -q 'mtpr_syn_fix' /etc/ufw/before.rules; then
             log_info "COMMIT не найден, добавляем правила в конец before.rules"
             echo -e "\n# MTProxy SYN FIX by MEKO (mtpr_syn_fix)" >> /etc/ufw/before.rules
-            echo '-A ufw-before-input -p tcp --dport 443 --syn -m hashlimit --hashlimit-name mtproto_443 --hashlimit-mode srcip --hashlimit-upto 54/minute --hashlimit-burst 1 --hashlimit-htable-expire 60000 --hashlimit-htable-size 32768 -m comment --comment "mtpr_syn_fix" -j ACCEPT' >> /etc/ufw/before.rules
-            echo '-A ufw-before-input -p tcp --dport 443 --syn -j REJECT --reject-with tcp-reset' >> /etc/ufw/before.rules
+            echo "-A ufw-before-input -p tcp --dport $port --syn -m hashlimit --hashlimit-name mtproto_$port --hashlimit-mode srcip --hashlimit-upto 54/minute --hashlimit-burst 1 --hashlimit-htable-expire 60000 --hashlimit-htable-size 32768 -m comment --comment \"mtpr_syn_fix\" -j ACCEPT" >> /etc/ufw/before.rules
+            echo "-A ufw-before-input -p tcp --dport $port --syn -j REJECT --reject-with tcp-reset" >> /etc/ufw/before.rules
         fi
     else
         log_info "Наши правила уже присутствуют в before.rules"
     fi
 
-    # Перезагружаем ufw, чтобы применить изменения
+    # Сохраняем порт
+    save_port "$port"
+
+    # Перезагружаем ufw
     ufw reload
 
-    log_success "SYN FIX успешно установлен"
+    log_success "SYN FIX успешно установлен на порт $port"
 }
 
-# ── Удаление ВСЕХ SYN-правил на порт 443 ───────────────────
+# ── Удаление ВСЕХ SYN-правил (TCP + SYN) ──────────────────
 remove_syn_fix() {
-    log_info "Удаление всех SYN-правил на порт 443..."
+    log_info "Удаление всех SYN-правил (TCP + SYN)..."
 
     # 1. Удаляем из цепочки ufw-before-input в iptables
     local nums=()
     while IFS= read -r line; do
-        # Ищем 443 и SYN в одной строке (регистр не важен)
-        if echo "$line" | grep -qiE '443.*syn|syn.*443'; then
+        # Ищем строки с TCP и SYN (регистр не важен)
+        if echo "$line" | grep -qiE 'tcp.*syn|syn.*tcp'; then
             num=$(echo "$line" | awk '{print $1}')
             nums+=("$num")
         fi
@@ -98,21 +159,23 @@ remove_syn_fix() {
 
     # 2. Удаляем строки с SYN-правилами из всех .rules файлов в /etc/ufw/
     find /etc/ufw/ -name '*.rules' -type f | while read -r file; do
-        if grep -qiE '443.*syn|syn.*443' "$file"; then
+        if grep -qiE 'tcp.*syn|syn.*tcp' "$file"; then
             cp "$file" "$file.bak.$(date +%s)"
-            sed -i '/443.*syn/d' "$file"
-            sed -i '/syn.*443/d' "$file"
+            # Удаляем строки, содержащие tcp и syn (в любом порядке)
+            sed -i '/tcp.*syn/d' "$file"
+            sed -i '/syn.*tcp/d' "$file"
             sed -i '/^$/d' "$file"
             log_info "Очищен файл: $file"
         fi
     done
 
     ufw reload
+    rm -f "$PORT_FILE"
 
-    log_success "Все SYN-правила на порт 443 удалены"
+    log_success "Все SYN-правила удалены"
 }
 
-# ── Пункт 2: Optimization (пока ничего не делает) ────────────
+# ── Пункт 2: Optimization (пока ничего не делает) ──────────
 apply_optimization() {
     log_info "Оптимизация пока не реализована"
 }
@@ -128,18 +191,21 @@ show_header() {
     echo -e "  ${BOLD}Простой менеджер SYN FIX${NC}"
     echo -e "  ${DIM}===========================${NC}"
     echo ""
+    # Статус SYN FIX (любое правило)
     if is_syn_fix_installed; then
-        echo -e "  ${BOLD}Статус SYN FIX:${NC} ${GREEN}Установлен${NC}"
+        echo -e "  ${BOLD}SYN FIX:${NC} ${GREEN}Установлен${NC}"
     else
-        echo -e "  ${BOLD}Статус SYN FIX:${NC} ${DIM}Не установлен${NC}"
+        echo -e "  ${BOLD}SYN FIX:${NC} ${DIM}Не установлен${NC}"
     fi
+    # Статус Telemt
+    telemt_status=$(detect_telemt)
+    echo -e "  ${BOLD}Telemt:${NC} ${telemt_status}"
     echo ""
 }
 
 # ── Главное меню ─────────────────────────────────────────────
 main_menu() {
     while true; do
-        # ВАЖНО: ПРОВЕРКА ПЕРЕД КАЖДЫМ ПОКАЗОМ МЕНЮ
         show_header
 
         # Динамическое имя пункта 1
@@ -161,7 +227,7 @@ main_menu() {
             1)
                 echo ""
                 if is_syn_fix_installed; then
-                    log_info "SYN FIX установлен. Удалить все SYN-правила на порт 443?"
+                    log_info "Обнаружены SYN-правила. Удалить ВСЕ такие правила?"
                     echo -en "  ${BOLD}Удалить? [y/N]:${NC} "
                     local confirm
                     read -r confirm
@@ -171,15 +237,7 @@ main_menu() {
                         log_info "Отмена удаления"
                     fi
                 else
-                    log_info "SYN FIX не установлен. Установить?"
-                    echo -en "  ${BOLD}Установить? [y/N]:${NC} "
-                    local confirm
-                    read -r confirm
-                    if [[ "$confirm" =~ ^[yY]$ ]]; then
-                        install_syn_fix
-                    else
-                        log_info "Отмена установки"
-                    fi
+                    install_syn_fix
                 fi
                 echo ""
                 read -rsn1 -p "  Нажмите любую клавишу для возврата в меню..."
