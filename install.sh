@@ -2,16 +2,6 @@
 
 set -e
 
-# Автоопределение последнего релиза
-REPO="Mekotofeuka/MTPR-FIX-By-MEKO"
-LATEST_TAG=$(curl -s "https://api.github.com/repos/$REPO/releases/latest" | grep '"tag_name"' | head -1 | cut -d'"' -f4)
-
-if [ -z "$LATEST_TAG" ]; then
-    echo "Ошибка: не удалось определить последний релиз"
-    exit 1
-fi
-
-SCRIPT_URL="https://raw.githubusercontent.com/$REPO/$LATEST_TAG/main.sh"
 LOCAL_FILE="/opt/mtpr-simple/main.sh"
 VERSION_FILE="/opt/mtpr-simple/version"
 
@@ -22,15 +12,15 @@ fi
 
 mkdir -p /opt/mtpr-simple
 
-rm -f "$LOCAL_FILE"
-
-curl -fsSL "$SCRIPT_URL" -o "$LOCAL_FILE"
+# Всегда качаем свежую версию из main
+curl -fsSL "https://raw.githubusercontent.com/Mekotofeuka/MTPR-FIX-By-MEKO/main/main.sh" -o "$LOCAL_FILE"
 
 chmod +x "$LOCAL_FILE"
 
+# Сохраняем хэш для будущих проверок
 md5sum "$LOCAL_FILE" | awk '{print $1}' > "$VERSION_FILE"
 
 ln -sf "$LOCAL_FILE" /usr/local/bin/mekopr
 
-echo "OK updated"
+echo "OK installed"
 exec "$LOCAL_FILE" </dev/tty
