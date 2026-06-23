@@ -1,4 +1,7 @@
 #!/bin/bash
+# Простой менеджер SYN FIX
+# Использование: curl -fsSL https://raw.githubusercontent.com/Mekotofeuka/MTPR-FIX-By-MEKO/main/install.sh | sudo bash
+
 set -e
 
 SCRIPT_URL="https://raw.githubusercontent.com/Mekotofeuka/MTPR-FIX-By-MEKO/main/main.sh"
@@ -13,5 +16,5 @@ curl -fsSL "$SCRIPT_URL" -o /opt/mtpr-simple/main.sh
 chmod +x /opt/mtpr-simple/main.sh
 ln -sf /opt/mtpr-simple/main.sh /usr/local/bin/mtpr
 
-echo "Установка завершена. Запуск меню"
+echo "Установка завершена. Запуск меню..."
 exec /opt/mtpr-simple/main.sh </dev/tty
