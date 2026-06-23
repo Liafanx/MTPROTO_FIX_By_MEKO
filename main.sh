@@ -116,22 +116,24 @@ install_syn_fix() {
 
     ufw --force enable
 
-    # Добавляем наши правила в /etc/ufw/before.rules (если их там ещё нет)
-    if ! grep -q 'mtpr_syn_fix' /etc/ufw/before.rules; then
+    # Удаляем старые строки с mtpr_syn_fix (и комментарии, и правила)
+    if grep -q 'mtpr_syn_fix' /etc/ufw/before.rules; then
         cp /etc/ufw/before.rules /etc/ufw/before.rules.bak.$(date +%s)
-        sed -i "/COMMIT/ i\
-# MTProxy SYN FIX by MEKO (mtpr_syn_fix)\n\
--A ufw-before-input -p tcp --dport $port --syn -m hashlimit --hashlimit-name mtproto_$port --hashlimit-mode srcip --hashlimit-upto 54/minute --hashlimit-burst 1 --hashlimit-htable-expire 60000 --hashlimit-htable-size 32768 -m comment --comment \"mtpr_syn_fix\" -j ACCEPT\n\
--A ufw-before-input -p tcp --dport $port --syn -j REJECT --reject-with tcp-reset" /etc/ufw/before.rules
+        sed -i '/mtpr_syn_fix/d' /etc/ufw/before.rules
+        log_info "Старые правила mtpr_syn_fix удалены"
+    fi
 
-        if ! grep -q 'mtpr_syn_fix' /etc/ufw/before.rules; then
-            log_info "COMMIT не найден, добавляем в конец before.rules"
-            echo -e "\n# MTProxy SYN FIX by MEKO (mtpr_syn_fix)" >> /etc/ufw/before.rules
-            echo "-A ufw-before-input -p tcp --dport $port --syn -m hashlimit --hashlimit-name mtproto_$port --hashlimit-mode srcip --hashlimit-upto 54/minute --hashlimit-burst 1 --hashlimit-htable-expire 60000 --hashlimit-htable-size 32768 -m comment --comment \"mtpr_syn_fix\" -j ACCEPT" >> /etc/ufw/before.rules
-            echo "-A ufw-before-input -p tcp --dport $port --syn -j REJECT --reject-with tcp-reset" >> /etc/ufw/before.rules
-        fi
-    else
-        log_info "Наши правила уже есть в before.rules"
+    # Добавляем правила ПЕРЕД COMMIT
+    cp /etc/ufw/before.rules /etc/ufw/before.rules.bak.$(date +%s)
+    local rule1="-A ufw-before-input -p tcp --dport $port --syn -m hashlimit --hashlimit-name mtproto_$port --hashlimit-mode srcip --hashlimit-upto 54/minute --hashlimit-burst 1 --hashlimit-htable-expire 60000 --hashlimit-htable-size 32768 -m comment --comment \"mtpr_syn_fix\" -j ACCEPT"
+    local rule2="-A ufw-before-input -p tcp --dport $port --syn -j REJECT --reject-with tcp-reset"
+    
+    # Вставляем перед последним COMMIT
+    sed -i "/^COMMIT$/i # MTProxy SYN FIX by MEKO (mtpr_syn_fix)\n$rule1\n$rule2\n" /etc/ufw/before.rules
+
+    if ! grep -q 'mtpr_syn_fix' /etc/ufw/before.rules; then
+        log_error "Не удалось добавить правила в before.rules"
+        return 1
     fi
 
     save_port "$port"
@@ -187,7 +189,7 @@ clear_screen() {
 show_header() {
     clear_screen
     echo ""
-    echo -e "  ${BOLD}Простой менеджер SYN FIX v1${NC}"
+    echo -e "  ${BOLD}Простой менеджер SYN FIXv2${NC}"
     echo -e "  ${DIM}===========================${NC}"
     echo ""
 
