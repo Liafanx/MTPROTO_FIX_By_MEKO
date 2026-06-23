@@ -4,25 +4,11 @@
 
 set -eo pipefail
 
-# ── Конфиг ─────────────────────────────────────────────────────
-REPO="Mekotofeuka/MTPR-FIX-By-MEKO"
-LATEST_TAG=""
-get_latest_tag() {
-    LATEST_TAG=$(curl -s "https://api.github.com/repos/$REPO/releases/latest" | grep '"tag_name"' | head -1 | cut -d'"' -f4)
-    if [ -z "$LATEST_TAG" ]; then
-        return 1
-    fi
-    return 0
-}
-
-get_latest_tag || LATEST_TAG="0.1"  # fallback
-
-SCRIPT_URL="https://raw.githubusercontent.com/$REPO/$LATEST_TAG/main.sh"
 LOCAL_FILE="/opt/mtpr-simple/main.sh"
 VERSION_FILE="/opt/mtpr-simple/version"
 PORT_FILE="/opt/mtpr-simple/port"
+RAW_URL="https://raw.githubusercontent.com/Mekotofeuka/MTPR-FIX-By-MEKO/main/main.sh"
 
-# ── Цвета ─────────────────────────────────────────────────────
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
@@ -32,57 +18,34 @@ BOLD='\033[1m'
 DIM='\033[2m'
 NC='\033[0m'
 
-# ── Логирование ─────────────────────────────────────────────
 log_info()    { echo -e "  ${BLUE}[i]${NC} $1"; }
 log_success() { echo -e "  ${GREEN}[✓]${NC} $1"; }
 log_error()   { echo -e "  ${RED}[✗]${NC} $1" >&2; }
 
-# ── Проверка обновлений ──────────────────────────────────────
 check_update() {
-    if [ ! -f "$LOCAL_FILE" ] || [ ! -f "$VERSION_FILE" ]; then
-        return 1
-    fi
+    local remote_hash local_hash
     
-    # Проверяем, не изменился ли тег
-    local remote_tag=$(curl -s "https://api.github.com/repos/$REPO/releases/latest" | grep '"tag_name"' | head -1 | cut -d'"' -f4)
-    local current_tag=$(cat "$VERSION_FILE" 2>/dev/null)
-    
-    if [ -n "$remote_tag" ] && [ "$remote_tag" != "$current_tag" ]; then
-        return 0 # есть обновление (новый тег)
-    fi
-    
-    # Дополнительно проверяем хэш на случай правок в том же теге
-    local remote_hash=$(curl -fsSL "$SCRIPT_URL" 2>/dev/null | md5sum | awk '{print $1}')
-    local local_hash=$(cat /opt/mtpr-simple/hash 2>/dev/null)
+    remote_hash=$(curl -fsSL "$RAW_URL" 2>/dev/null | md5sum | awk '{print $1}')
+    local_hash=$(cat "$VERSION_FILE" 2>/dev/null)
     
     if [ -n "$remote_hash" ] && [ "$remote_hash" != "$local_hash" ]; then
-        return 0 # есть обновление (изменился файл)
+        return 0
     fi
-    
-    return 1 # нет обновления
+    return 1
 }
 
-# ── Обновление ───────────────────────────────────────────────
 do_update() {
     log_info "Обнаружено обновление!"
-    
-    # Обновляем тег если нужно
-    get_latest_tag || true
-    SCRIPT_URL="https://raw.githubusercontent.com/$REPO/$LATEST_TAG/main.sh"
-    
-    curl -fsSL "$SCRIPT_URL" -o "$LOCAL_FILE"
+    curl -fsSL "$RAW_URL" -o "$LOCAL_FILE"
     chmod +x "$LOCAL_FILE"
-    echo "$LATEST_TAG" > "$VERSION_FILE"
-    md5sum "$LOCAL_FILE" | awk '{print $1}' > /opt/mtpr-simple/hash
-    log_success "Обновлено до версии $LATEST_TAG!"
+    md5sum "$LOCAL_FILE" | awk '{print $1}' > "$VERSION_FILE"
+    log_success "Обновлено!"
     echo ""
     echo -e "  ${BOLD}Перезапуск...${NC}"
     sleep 1
     exec "$LOCAL_FILE" </dev/tty
-    exit 0
 }
 
-# ── Проверка root ────────────────────────────────────────────
 check_root() {
     if [ "$(id -u)" -ne 0 ]; then
         log_error "Требуются права root"
@@ -90,7 +53,6 @@ check_root() {
     fi
 }
 
-# ── Файл для хранения порта ─────────────────────────────────
 get_saved_port() {
     if [ -f "$PORT_FILE" ]; then
         cat "$PORT_FILE"
@@ -103,7 +65,6 @@ save_port() {
     echo "$1" > "$PORT_FILE"
 }
 
-# ── ПРОВЕРКА НАЛИЧИЯ ЛЮБОГО ПРАВИЛА С tcp И syn ────────────
 is_syn_fix_installed() {
     if iptables-save 2>/dev/null | grep -iE 'tcp.*syn|syn.*tcp' | grep -q .; then
         return 0
@@ -114,7 +75,6 @@ is_syn_fix_installed() {
     return 1
 }
 
-# ── ПРОВЕРКА, ЧТО СТОИТ ИМЕННО НАШ SYN FIX (mtpr_syn_fix) ──
 is_our_syn_fix_installed() {
     if iptables-save 2>/dev/null | grep -q 'mtpr_syn_fix'; then
         return 0
@@ -125,34 +85,6 @@ is_our_syn_fix_installed() {
     return 1
 }
 
-# ── Определение Telemt ──────────────────────────────────────
-detect_telemt() {
-    if pgrep -x telemt >/dev/null 2>&1; then
-        local configs=(
-            "/etc/telemt/telemt.toml"
-            "/etc/telemt/config.toml"
-            "/etc/telemt.toml"
-            "/opt/telemt/config.toml"
-            "/opt/telemt/telemt.toml"
-        )
-        for cfg in "${configs[@]}"; do
-            if [ -f "$cfg" ]; then
-                local port=$(grep -E '^port[[:space:]]*=' "$cfg" | head -1 | awk -F'=' '{print $2}' | tr -d ' "')
-                if [[ "$port" =~ ^[0-9]+$ ]]; then
-                    echo "Установлен (порт $port)"
-                    return 0
-                fi
-            fi
-        done
-        echo "Установлен (порт не определён)"
-        return 0
-    else
-        echo "не обнаружен"
-        return 1
-    fi
-}
-
-# ── Установка SYN FIX ──────────────────────────────────────
 install_syn_fix() {
     local port
     echo ""
@@ -176,7 +108,6 @@ install_syn_fix() {
 
     ufw --force enable
 
-    # Добавляем наши правила в /etc/ufw/before.rules (если их там ещё нет)
     if ! grep -q 'mtpr_syn_fix' /etc/ufw/before.rules; then
         cp /etc/ufw/before.rules /etc/ufw/before.rules.bak.$(date +%s)
         sed -i "/COMMIT/ i\
@@ -185,7 +116,6 @@ install_syn_fix() {
 -A ufw-before-input -p tcp --dport $port --syn -j REJECT --reject-with tcp-reset" /etc/ufw/before.rules
 
         if ! grep -q 'mtpr_syn_fix' /etc/ufw/before.rules; then
-            log_info "COMMIT не найден, добавляем в конец before.rules"
             echo -e "\n# MTProxy SYN FIX by MEKO (mtpr_syn_fix)" >> /etc/ufw/before.rules
             echo "-A ufw-before-input -p tcp --dport $port --syn -m hashlimit --hashlimit-name mtproto_$port --hashlimit-mode srcip --hashlimit-upto 54/minute --hashlimit-burst 1 --hashlimit-htable-expire 60000 --hashlimit-htable-size 32768 -m comment --comment \"mtpr_syn_fix\" -j ACCEPT" >> /etc/ufw/before.rules
             echo "-A ufw-before-input -p tcp --dport $port --syn -j REJECT --reject-with tcp-reset" >> /etc/ufw/before.rules
@@ -200,11 +130,9 @@ install_syn_fix() {
     log_success "SYN FIX успешно Установлен на порт $port"
 }
 
-# ── Удаление ВСЕХ правил с tcp и syn ───────────────────────
 remove_syn_fix() {
     log_info "Удаление всех правил с tcp и syn..."
 
-    # 1. Удаляем из цепочки ufw-before-input в iptables
     local nums=()
     while IFS= read -r line; do
         if echo "$line" | grep -qiE 'tcp.*syn|syn.*tcp'; then
@@ -217,7 +145,6 @@ remove_syn_fix() {
         iptables -D ufw-before-input "$num" 2>/dev/null && log_info "Удалено правило #$num из iptables"
     done
 
-    # 2. Удаляем строки с tcp и syn из всех .rules файлов в /etc/ufw/
     find /etc/ufw/ -name '*.rules' -type f | while read -r file; do
         if grep -qiE 'tcp.*syn|syn.*tcp' "$file"; then
             cp "$file" "$file.bak.$(date +%s)"
@@ -234,12 +161,10 @@ remove_syn_fix() {
     log_success "Все правила с tcp и syn удалены"
 }
 
-# ── Пункт 2: Optimization (пока ничего не делает) ──────────
 apply_optimization() {
     log_info "Оптимизация пока не реализована"
 }
 
-# ── Очистка экрана и шапка ──────────────────────────────────
 clear_screen() {
     clear 2>/dev/null || printf '\033[2J\033[H'
 }
@@ -251,7 +176,6 @@ show_header() {
     echo -e "  ${DIM}===========================${NC}"
     echo ""
 
-    # Определяем статус SYN FIX
     if is_syn_fix_installed; then
         if is_our_syn_fix_installed; then
             local port_info=$(get_saved_port)
@@ -267,7 +191,6 @@ show_header() {
         echo -e "  ${BOLD}SYN FIX:${NC} ${RED}Не установлен${NC}"
     fi
 
-    # Telemt
     if pgrep -x telemt >/dev/null 2>&1; then
         local port_info=""
         local configs=(
@@ -298,14 +221,8 @@ show_header() {
     echo ""
 }
 
-# ── Главное меню ─────────────────────────────────────────────
 main_menu() {
     while true; do
-        # Проверяем обновления при каждом входе в меню
-        if check_update; then
-            do_update
-        fi
-        
         show_header
 
         if is_syn_fix_installed; then
@@ -360,10 +277,9 @@ main_menu() {
     done
 }
 
-# ── Запуск ────────────────────────────────────────────────────
 check_root
 
-# Первая проверка обновлений при старте
+# Проверка обновления ОДИН раз при запуске
 if check_update; then
     do_update
 fi
