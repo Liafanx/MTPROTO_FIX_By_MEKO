@@ -193,8 +193,34 @@ show_header() {
         echo -e "  ${BOLD}SYN FIX:${NC} ${DIM}Не установлен${NC}"
     fi
 
-    telemt_status=$(detect_telemt)
-    echo -e "  ${BOLD}Telemt:${NC} ${telemt_status}"
+    # Telemt — теперь с цветом: зелёным если установлен, красным если нет
+    if pgrep -x telemt >/dev/null 2>&1; then
+        local port_info=""
+        local configs=(
+            "/etc/telemt/telemt.toml"
+            "/etc/telemt/config.toml"
+            "/etc/telemt.toml"
+            "/opt/telemt/config.toml"
+            "/opt/telemt/telemt.toml"
+        )
+        for cfg in "${configs[@]}"; do
+            if [ -f "$cfg" ]; then
+                local port=$(grep -E '^port[[:space:]]*=' "$cfg" | head -1 | awk -F'=' '{print $2}' | tr -d ' "')
+                if [[ "$port" =~ ^[0-9]+$ ]]; then
+                    port_info=" (порт $port)"
+                    break
+                fi
+            fi
+        done
+        if [ -n "$port_info" ]; then
+            echo -e "  ${BOLD}Telemt:${NC} ${GREEN}установлен${NC}$port_info"
+        else
+            echo -e "  ${BOLD}Telemt:${NC} ${GREEN}установлен${NC} (порт не определён)"
+        fi
+    else
+        echo -e "  ${BOLD}Telemt:${NC} ${RED}не обнаружен${NC}"
+    fi
+
     echo ""
 }
 
