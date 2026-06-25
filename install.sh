@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-SCRIPT_URL="https://raw.githubusercontent.com/Mekotofeuka/MTPR-FIX-By-MEKO/main/main.sh"
+SCRIPT_URL="https://raw.githubusercontent.com/Mekotofeuka/MTPROTO_FIX_By_MEKO/main/main.sh"
 
 if [ "$(id -u)" -ne 0 ]; then
     echo "Запустите от root: curl -fsSL ... | sudo bash" >&2
