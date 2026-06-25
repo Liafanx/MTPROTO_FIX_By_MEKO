@@ -318,14 +318,6 @@ EOF
         grep -q '\[server\]' /etc/telemt/telemt.toml && sed -i '/\[server\]/a max_connections = 16384' /etc/telemt/telemt.toml
     fi
     
-    # Настройка idle_timeout_sec
-    if grep -q '^idle_timeout_sec *=.*' /etc/telemt/telemt.toml; then
-        if ! grep -q '^idle_timeout_sec *= *300' /etc/telemt/telemt.toml; then
-            sed -i 's/^idle_timeout_sec *= *.*/idle_timeout_sec = 300/' /etc/telemt/telemt.toml
-        fi
-    else
-        grep -q '\[server\]' /etc/telemt/telemt.toml && sed -i '/\[server\]/a idle_timeout_sec = 300' /etc/telemt/telemt.toml
-    fi
     
     # Настройка client_handshake
     if grep -q '^client_handshake *=.*' /etc/telemt/telemt.toml; then
