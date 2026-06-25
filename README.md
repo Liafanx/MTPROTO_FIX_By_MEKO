@@ -46,6 +46,14 @@ mekopr
 
 от **0.1 USDT**
 
+
+
 Также вы можете поддержать меня, воспользовавшись моим сервисом:
 
 [<img width="300" height="300" alt="MEKO bot" src="https://github.com/user-attachments/assets/8db41a95-79f2-40d6-9777-50b6ffb6fa48" />](https://t.me/projectmeko_bot)
+
+
+
+
+## Отдельное спасибо за вклад в разработку:
+- [@CryZFix](https://github.com/CryZFix/)
