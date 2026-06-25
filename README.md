@@ -1,7 +1,7 @@
 # MTPROTO-FIX-By-MEKO 
 [![Latest Release](https://img.shields.io/github/v/release/Mekotofeuka/MTPR-FIX-By-MEKO?color=neon)](https://github.com/Mekotofeuka/MTPR-FIX-By-MEKO/releases/latest) [![Stars](https://img.shields.io/github/stars/Mekotofeuka/MTPR-FIX-By-MEKO?style=social)](https://github.com/Mekotofeuka/MTPR-FIX-By-MEKO/stargazers) [![Forks](https://img.shields.io/github/forks/Mekotofeuka/MTPR-FIX-By-MEKO?style=social)](https://github.com/Mekotofeuka/MTPR-FIX-By-MEKO/network/members)
 
-Данный скрипт используется для серверов с Telemt, он фиксит проблему долгого первичного TCP-подключение клиентов, в отличие от созданных и популярных в сообществе ранее фиксов с SYN limit имеет ряд преимуществ:
+Данный скрипт используется для серверов с Telemt, фиксит проблему долгого первичного TCP-подключения клиентов, в отличие от созданных и популярных в сообществе ранее фиксов с SYN limit имеет ряд преимуществ:
 - Быстрое подключение за <3-8 сек. (Оригинальный SYN Limit: >10-20сек.) даже при большом количестве юзеров
 - Один порт для Ios/Android/Macos/Desktop etc.
 - Медиа грузят практически с прежней скоростью
