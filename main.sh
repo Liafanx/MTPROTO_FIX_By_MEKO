@@ -16,6 +16,7 @@ NC='\033[0m'
 log_info()    { echo -e "  ${BLUE}[i]${NC} $1"; }
 log_success() { echo -e "  ${GREEN}[✓]${NC} $1"; }
 log_error()   { echo -e "  ${RED}[✗]${NC} $1" >&2; }
+log_warning() { echo -e "  ${YELLOW}[!]${NC} $1"; }
 
 # ── Проверка root ────────────────────────────────────────────
 check_root() {
@@ -130,6 +131,29 @@ install_syn_fix() {
     if ! [[ "$port" =~ ^[0-9]+$ ]] || [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; then
         log_error "Некорректный порт, используем 443"
         port="443"
+    fi
+
+    # ── ПОДТВЕРЖДЕНИЕ ПЕРЕД УСТАНОВКОЙ ──────────────────────
+    echo ""
+    log_warning "Будет выполнена установка SYN FIX на порт $port"
+    echo ""
+    echo -e "  ${BOLD}Что будет сделано:${NC}"
+    echo -e "  • Установлен пакет ${CYAN}ufw${NC} (если не установлен)"
+    echo -e "  • Разрешены порты ${CYAN}22${NC} (SSH) и ${CYAN}$port${NC} (Telemt)"
+    echo -e "  • Включен файрвол ${CYAN}ufw${NC}"
+    echo -e "  • Добавлены ${CYAN}4 правила iptables${NC} для защиты от SYN-атак"
+    echo -e "  • Правила добавлены в цепочку ${CYAN}ufw-before-input${NC}"
+    echo ""
+    log_warning "${BOLD}ВНИМАНИЕ:${NC} Это изменит настройки файрвола системы!"
+    log_warning "Если у вас SSH не на порту 22, вы можете потерять доступ!"
+    echo ""
+    echo -en "  ${BOLD}Продолжить установку? [y/N]:${NC} "
+    local confirm
+    read -r confirm
+    
+    if [[ ! "$confirm" =~ ^[yY]$ ]]; then
+        log_info "Установка отменена"
+        return 1
     fi
 
     log_info "Установка SYN FIX на порт $port..."
@@ -321,7 +345,7 @@ clear_screen() {
 show_header() {
     clear_screen
     echo ""
-    echo -e "  ${BOLD}MTProto Fixer by MEKO v0.2${NC}"
+    echo -e "  ${BOLD}MTProto Fixer by MEKO v0.5${NC}"
     echo -e "  ${DIM}===========================${NC}"
     echo ""
 
