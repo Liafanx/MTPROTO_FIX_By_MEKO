@@ -53,10 +53,10 @@ is_syn_fix_installed() {
 
 # ── ПРОВЕРКА ──
 is_our_syn_fix_installed() {
-    if iptables-save 2>/dev/null | grep -q 'TELEMT-INPUT'; then
+    if iptables-save 2>/dev/null | grep -q 'mtpr_syn_fix'; then
         return 0
     fi
-    if iptables-save 2>/dev/null | grep -q 'mtproto_'; then
+    if grep -r 'mtpr_syn_fix' /etc/ufw/ --include='*.rules' 2>/dev/null | grep -q .; then
         return 0
     fi
     return 1
@@ -134,16 +134,15 @@ install_syn_fix() {
 
     log_info "Установка SYN FIX на порт $port..."
 
-    # Создаём отдельную цепочку для TeleMT
-    iptables -N TELEMT-INPUT 2>/dev/null
+    apt update
+    apt install ufw -y
+    ufw allow 22/tcp
+    ufw allow "$port"/tcp
+    ufw --force enable
+    ufw reload
 
-    # Направляем TCP:443 в цепочку TELEMT-INPUT
-    iptables -C INPUT -p tcp --dport "$port" -j TELEMT-INPUT 2>/dev/null || \
-    iptables -I INPUT -p tcp --dport "$port" -j TELEMT-INPUT
-
-    # iOS-паттерн
-    iptables -I TELEMT-INPUT 1 \
-    -p tcp --syn \
+    iptables -I ufw-before-input 1 \
+    -p tcp --dport "$port" --syn \
     -m tcp --tcp-flags SYN SYN \
     -m length --length 64 \
     -m ttl --ttl-lt 65 \
@@ -156,16 +155,15 @@ install_syn_fix() {
     --hashlimit-htable-size 32768 \
     -j ACCEPT
 
-    iptables -I TELEMT-INPUT 2 \
-    -p tcp --syn \
+    iptables -I ufw-before-input 2 \
+    -p tcp --dport "$port" --syn \
     -m tcp --tcp-flags SYN SYN \
     -m length --length 64 \
     -m ttl --ttl-lt 65 \
-    -j DROP
+    -j REJECT --reject-with tcp-reset
 
-    # Основной лимит MTProto
-    iptables -I TELEMT-INPUT 3 \
-    -p tcp --syn \
+    iptables -I ufw-before-input 3 \
+    -p tcp --dport "$port" --syn \
     -m hashlimit \
     --hashlimit-name mtproto_"$port" \
     --hashlimit-mode srcip \
@@ -175,9 +173,8 @@ install_syn_fix() {
     --hashlimit-htable-size 32768 \
     -j ACCEPT
 
-    # остальное режем TCP RST
-    iptables -I TELEMT-INPUT 4 \
-    -p tcp --syn \
+    iptables -I ufw-before-input 4 \
+    -p tcp --dport "$port" --syn \
     -j REJECT --reject-with tcp-reset
 
     save_port "$port"
@@ -189,26 +186,20 @@ install_syn_fix() {
 remove_syn_fix() {
     log_info "Удаление всех правил с tcp и syn..."
 
-    # 1. Удаляем правила из цепочки TELEMT-INPUT
-    if iptables -L TELEMT-INPUT -n 2>/dev/null | grep -q .; then
-        local nums=()
-        while IFS= read -r line; do
-            if echo "$line" | grep -qiE 'tcp.*syn|syn.*tcp'; then
-                num=$(echo "$line" | awk '{print $1}')
-                nums+=("$num")
-            fi
-        done < <(iptables -L TELEMT-INPUT --line-numbers -n 2>/dev/null | grep -v 'Chain' | grep -v 'target')
+    # 1. Удаляем из цепочки ufw-before-input в iptables
+    local nums=()
+    while IFS= read -r line; do
+        if echo "$line" | grep -qiE 'tcp.*syn|syn.*tcp'; then
+            num=$(echo "$line" | awk '{print $1}')
+            nums+=("$num")
+        fi
+    done < <(iptables -L ufw-before-input --line-numbers -n 2>/dev/null)
 
-        for num in $(printf '%s\n' "${nums[@]}" | sort -nr); do
-            iptables -D TELEMT-INPUT "$num" 2>/dev/null && log_info "Удалено правило #$num из TELEMT-INPUT"
-        done
-    fi
+    for num in $(printf '%s\n' "${nums[@]}" | sort -nr); do
+        iptables -D ufw-before-input "$num" 2>/dev/null && log_info "Удалено правило #$num из iptables"
+    done
 
-    # 2. Удаляем цепочку TELEMT-INPUT
-    iptables -D INPUT -p tcp --dport 443 -j TELEMT-INPUT 2>/dev/null
-    iptables -X TELEMT-INPUT 2>/dev/null
-
-    # 3. Удаляем строки с tcp и syn из всех .rules файлов в /etc/ufw/
+    # 2. Удаляем строки с tcp и syn из всех .rules файлов в /etc/ufw/
     find /etc/ufw/ -name '*.rules' -type f | while read -r file; do
         if grep -qiE 'tcp.*syn|syn.*tcp' "$file"; then
             cp "$file" "$file.bak.$(date +%s)"
@@ -330,7 +321,7 @@ clear_screen() {
 show_header() {
     clear_screen
     echo ""
-    echo -e "  ${BOLD}MTProto Fixer by MEKO v0.4${NC}"
+    echo -e "  ${BOLD}MTProto Fixer by MEKO v0.2${NC}"
     echo -e "  ${DIM}===========================${NC}"
     echo ""
 
