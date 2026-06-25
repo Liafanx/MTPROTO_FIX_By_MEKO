@@ -285,6 +285,15 @@ EOF
     apply_sysctl() {
         local key="$1"
         local value="$2"
+		local conf="/etc/sysctl.conf"
+
+		# Проверяем наличие файла, при необходимости создаём
+		if [ ! -f "$conf" ]; then
+			touch "$conf" || {
+				echo "Ошибка: не удалось создать $conf" >&2
+				return 1
+			}
+		fi
         
         if [ "$(sysctl -n "$key" 2>/dev/null)" != "$value" ]; then
             sysctl -w "$key=$value"
