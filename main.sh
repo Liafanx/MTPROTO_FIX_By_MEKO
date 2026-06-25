@@ -330,7 +330,7 @@ clear_screen() {
 show_header() {
     clear_screen
     echo ""
-    echo -e "  ${BOLD}MTProto Fixer by MEKO v0.3${NC}"
+    echo -e "  ${BOLD}MTProto Fixer by MEKO v0.4${NC}"
     echo -e "  ${DIM}===========================${NC}"
     echo ""
 
