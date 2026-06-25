@@ -346,7 +346,7 @@ clear_screen() {
 show_header() {
     clear_screen
     echo ""
-    echo -e "  ${BOLD}MTProto Fixer by MEKO v0.61${NC}"
+    echo -e "  ${BOLD}MTProto Fixer by MEKO v0.62${NC}"
     echo -e "  ${DIM}===========================${NC}"
     echo ""
 
@@ -361,7 +361,7 @@ show_header() {
             fi
         else
             # Любой другой SYN фикс (не наш)
-            echo -e "  ${BOLD}SYN FIX:${NC} ${YELLOW}Установлен (сторонний)${NC}"
+            echo -e "  ${BOLD}SYN FIX:${NC} ${GREEN}Установлен${NC}"
         fi
     else
         echo -e "  ${BOLD}SYN FIX:${NC} ${RED}Не установлен${NC}"
@@ -396,7 +396,7 @@ show_header() {
         if is_mss_enabled; then
             echo -e "  ${BOLD}MSS:${NC} ${RED}включен${NC}"
         else
-            echo -e "  ${BOLD}MSS:${NC} ${GREEN}отключен${NC}"
+            echo -e "  ${BOLD}MSS:${NC} ${GREEN}Отключен${NC}"
         fi
     else
         echo -e "  ${BOLD}Telemt:${NC} ${RED}не обнаружен${NC}"
@@ -411,9 +411,9 @@ main_menu() {
         show_header
 
         if is_syn_fix_installed; then
-            local item1="${RED}Remove SYN FIX${NC}"
+            local item1="${RED}Удалить SYN FIX${NC}"
         else
-            local item1="${GREEN}Install SYN FIX${NC}"
+            local item1="${GREEN}Установить SYN FIX${NC}"
         fi
 
         # Проверяем статус MSS для пункта 2
