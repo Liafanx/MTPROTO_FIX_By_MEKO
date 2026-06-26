@@ -14,5 +14,4 @@ chmod +x /opt/mtpr-simple/main.sh
 ln -sf /opt/mtpr-simple/main.sh /usr/local/bin/mekopr
 
 echo "Установка завершена."
-echo "."
 exec /opt/mtpr-simple/main.sh </dev/tty
