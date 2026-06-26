@@ -390,6 +390,46 @@ EOF
     log_success "Базовая оптимизация выполнена"
 }
 
+# ── Пункт 4: Полное удаление MEKOpr ─────────────────────────
+remove_mekopr() {
+    echo ""
+    log_warning "${BOLD}ВНИМАНИЕ:${NC} Будет выполнено полное удаление MEKOpr со всеми его конфигами и правилами!"
+    echo ""
+    echo -e "  ${BOLD}Что будет удалено:${NC}"
+    echo -e "  • Все iptables правила и цепочка ${CYAN}$SYNFIX_CHAIN${NC}"
+    echo -e "  • Все файлы конфигурации в ${CYAN}/opt/mtpr-simple${NC}"
+    echo -e "  • Сам скрипт ${CYAN}$0${NC}"
+    echo ""
+    log_warning "Это действие нельзя отменить!"
+    echo -en "  ${BOLD}Продолжить удаление? [y/N]:${NC} "
+    local confirm
+    read -r confirm
+
+    if [[ ! "$confirm" =~ ^[yY]$ ]]; then
+        log_info "Удаление отменено"
+        return
+    fi
+
+    log_info "Начинаем полное удаление MEKOpr..."
+
+    # ── Удаляем SYN FIX (правила iptables) ──────────────────
+    remove_syn_fix
+
+    # ── Удаляем файлы MEKOpr ────────────────────────────────
+    log_info "Удаление файлов конфигурации..."
+    rm -rf /opt/mtpr-simple
+
+    # ── Удаляем сам скрипт ──────────────────────────────────
+    log_info "Удаление скрипта..."
+    rm -f "$0"
+
+    log_success "MEKOpr полностью удалён с сервера!"
+    echo ""
+    log_info "Для завершения работы скрипта нажмите Enter..."
+    read -r
+    exit 0
+}
+
 # ── Очистка экрана и шапка ──────────────────────────────────
 clear_screen() {
     clear 2>/dev/null || printf '\033[2J\033[H'
@@ -398,9 +438,17 @@ clear_screen() {
 show_header() {
     clear_screen
     echo ""
-    echo -e "  ${BOLD}MTProto Fixer by MEKO v0.75${NC}"
+    echo -e "  ${BOLD}MTProto Fixer by MEKO v0.76${NC}"
     echo -e "  ${DIM}===========================${NC}"
     echo ""
+
+    # Обновляем порт из конфига при каждом показе меню
+    if pgrep -x telemt >/dev/null 2>&1 && [ -f "$CONFIG_TELEMT" ]; then
+        local current_port=$(grep -E '^port[[:space:]]*=' "$CONFIG_TELEMT" | head -1 | awk -F'=' '{print $2}' | tr -d ' "')
+        if [[ "$current_port" =~ ^[0-9]+$ ]] && [ "$current_port" != "$(get_saved_port)" ]; then
+            save_port "$current_port"
+        fi
+    fi
 
     # Определяем статус SYN FIX
     if is_syn_fix_installed; then
@@ -466,6 +514,7 @@ main_menu() {
         echo -e "  ${CYAN}[1]${NC}  $item1"
         echo -e "  ${CYAN}[2]${NC}  $item2"
         echo -e "  ${CYAN}[3]${NC}  ${GREEN}Выполнить базовую оптимизацию${NC}"
+        echo -e "  ${CYAN}[4]${NC}  ${RED}Полное удаление MEKOpr${NC}"
         echo -e "  ${CYAN}[0]${NC}  Выход"
         echo ""
         echo -en "  ${BOLD}Выбор:${NC} "
@@ -508,6 +557,9 @@ main_menu() {
             apply_basic_optimization
             echo ""
             read -rsn1 -p "  Нажмите любую клавишу для возврата в меню..."
+            ;;
+        4)
+            remove_mekopr
             ;;
         0 | q | Q)
             echo ""
