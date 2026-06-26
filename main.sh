@@ -77,26 +77,17 @@ save_port() {
     echo "$1" >"$PORT_FILE"
 }
 
-# ── ПРОВЕРКА НАЛИЧИЯ ЛЮБОГО ПРАВИЛА С tcp И syn ────────────
+# ── Название кастомной цепочки iptables ─────────────────────
+SYNFIX_CHAIN="MTPR_SYNFIX"
+
+# ── ПРОВЕРКА НАЛИЧИЯ НАШЕЙ ЦЕПОЧКИ SYN FIX ──────────────────
 is_syn_fix_installed() {
-    if iptables-save 2>/dev/null | grep -iE 'tcp.*syn|syn.*tcp' | grep -q .; then
-        return 0
-    fi
-    if grep -rE 'tcp.*syn|syn.*tcp' /etc/ufw/ --include='*.rules' 2>/dev/null | grep -q .; then
-        return 0
-    fi
-    return 1
+    iptables -L "$SYNFIX_CHAIN" -n >/dev/null 2>&1
 }
 
-# ── ПРОВЕРКА ──
+# ── Для обратной совместимости с остальным кодом меню ──────
 is_our_syn_fix_installed() {
-    if iptables-save 2>/dev/null | grep -q 'mtpr_syn_fix'; then
-        return 0
-    fi
-    if grep -r 'mtpr_syn_fix' /etc/ufw/ --include='*.rules' 2>/dev/null | grep -q .; then
-        return 0
-    fi
-    return 1
+    is_syn_fix_installed
 }
 
 # ── Определение Telemt ──────────────────────────────────────
@@ -155,6 +146,26 @@ disable_mss() {
     log_success "MSS отключен (строки с mss закомментированы)"
 }
 
+# ── Установка iptables-persistent (если отсутствует) ────────
+ensure_iptables_persistence() {
+    if dpkg -s iptables-persistent >/dev/null 2>&1; then
+        return 0
+    fi
+    log_info "Установка iptables-persistent для сохранения правил между перезагрузками..."
+    DEBIAN_FRONTEND=noninteractive apt-get update -qq
+    DEBIAN_FRONTEND=noninteractive apt-get install -y iptables-persistent
+}
+
+# ── Сохранение текущих правил iptables на диск ──────────────
+persist_iptables_rules() {
+    mkdir -p /etc/iptables
+    if command -v netfilter-persistent >/dev/null 2>&1; then
+        netfilter-persistent save >/dev/null 2>&1
+    elif command -v iptables-save >/dev/null 2>&1; then
+        iptables-save >/etc/iptables/rules.v4
+    fi
+}
+
 # ── Установка SYN FIX ──────────────────────────────────────
 install_syn_fix() {
     local port
@@ -175,11 +186,10 @@ install_syn_fix() {
     log_warning "Будет выполнена установка SYN FIX на порт $port"
     echo ""
     echo -e "  ${BOLD}Что будет сделано:${NC}"
-    echo -e "  • Установлен пакет ${CYAN}ufw${NC} (если не установлен)"
-    echo -e "  • Разрешены порты ${CYAN}$ssh_port${NC} (для вашего доступа по SSH) и ${CYAN}$port${NC} (для Telemt)"
-    echo -e "  • Включен файрвол ${CYAN}ufw${NC}"
-    echo -e "  • Добавлены ${CYAN}4 правила iptables${NC} SYN"
-    echo -e "  • Правила будут добавлены в цепочку ${CYAN}ufw-before-input${NC}"
+    echo -e "  • Разрешён доступ по SSH на порту ${CYAN}$ssh_port${NC}"
+    echo -e "  • Создана отдельная цепочка iptables ${CYAN}$SYNFIX_CHAIN${NC} для порта ${CYAN}$port${NC}"
+    echo -e "  • Добавлены ${CYAN}4 правила${NC} SYN-фильтрации в эту цепочку"
+    echo -e "  • Правила будут сохранены через ${CYAN}iptables-persistent${NC} (для применения после перезагрузки)"
     echo -e "  • Вы сможете удалить данную настройку через меню скрипта."
     echo ""
     log_warning "${BOLD}ВНИМАНИЕ:${NC} Данная настройка изменит файрвол системы."
@@ -197,14 +207,23 @@ install_syn_fix() {
 
     log_info "Установка SYN FIX на порт $port..."
 
-    apt update
-    apt install ufw -y
-    ufw allow "$ssh_port"/tcp
-    ufw allow "$port"/tcp
-    ufw --force enable
-    ufw reload
+    ensure_iptables_persistence
 
-    iptables -I ufw-before-input 1 \
+    # ── Гарантируем доступ по SSH, прежде чем менять политику фильтрации ──
+    if ! iptables -C INPUT -p tcp --dport "$ssh_port" -j ACCEPT 2>/dev/null; then
+        iptables -I INPUT 1 -p tcp --dport "$ssh_port" -j ACCEPT
+    fi
+
+    # ── Создаём (или очищаем) собственную цепочку ──────────
+    iptables -N "$SYNFIX_CHAIN" 2>/dev/null
+    iptables -F "$SYNFIX_CHAIN"
+
+    # ── Подключаем цепочку к INPUT, если ещё не подключена ──
+    if ! iptables -C INPUT -j "$SYNFIX_CHAIN" 2>/dev/null; then
+        iptables -I INPUT 2 -j "$SYNFIX_CHAIN"
+    fi
+
+    iptables -A "$SYNFIX_CHAIN" \
         -p tcp --dport "$port" --syn \
         -m tcp --tcp-flags SYN SYN \
         -m length --length 64 \
@@ -218,14 +237,14 @@ install_syn_fix() {
         --hashlimit-htable-size 32768 \
         -j ACCEPT
 
-    iptables -I ufw-before-input 2 \
+    iptables -A "$SYNFIX_CHAIN" \
         -p tcp --dport "$port" --syn \
         -m tcp --tcp-flags SYN SYN \
         -m length --length 64 \
         -m ttl --ttl-lt 65 \
         -j REJECT --reject-with tcp-reset
 
-    iptables -I ufw-before-input 3 \
+    iptables -A "$SYNFIX_CHAIN" \
         -p tcp --dport "$port" --syn \
         -m hashlimit \
         --hashlimit-name mtproto_"$port" \
@@ -236,47 +255,35 @@ install_syn_fix() {
         --hashlimit-htable-size 32768 \
         -j ACCEPT
 
-    iptables -I ufw-before-input 4 \
+    iptables -A "$SYNFIX_CHAIN" \
         -p tcp --dport "$port" --syn \
         -j REJECT --reject-with tcp-reset
 
     save_port "$port"
+    persist_iptables_rules
 
     log_success "SYN FIX успешно Установлен на порт $port"
 }
 
-# ── Удаление ВСЕХ правил с tcp и syn ───────────────────────
+# ── Удаление SYN FIX (только нашей цепочки) ────────────────
 remove_syn_fix() {
-    log_info "Удаление всех правил с tcp и syn..."
+    log_info "Удаление SYN FIX..."
 
-    # 1. Удаляем из цепочки ufw-before-input в iptables
-    local nums=()
-    while IFS= read -r line; do
-        if echo "$line" | grep -qiE 'tcp.*syn|syn.*tcp'; then
-            num=$(echo "$line" | awk '{print $1}')
-            nums+=("$num")
-        fi
-    done < <(iptables -L ufw-before-input --line-numbers -n 2>/dev/null)
+    if iptables -C INPUT -j "$SYNFIX_CHAIN" 2>/dev/null; then
+        iptables -D INPUT -j "$SYNFIX_CHAIN"
+        log_info "Цепочка $SYNFIX_CHAIN отключена от INPUT"
+    fi
 
-    for num in $(printf '%s\n' "${nums[@]}" | sort -nr); do
-        iptables -D ufw-before-input "$num" 2>/dev/null && log_info "Удалено правило #$num из iptables"
-    done
+    if iptables -L "$SYNFIX_CHAIN" -n >/dev/null 2>&1; then
+        iptables -F "$SYNFIX_CHAIN"
+        iptables -X "$SYNFIX_CHAIN"
+        log_info "Цепочка $SYNFIX_CHAIN удалена"
+    fi
 
-    # 2. Удаляем строки с tcp и syn из всех .rules файлов в /etc/ufw/
-    find /etc/ufw/ -name '*.rules' -type f | while read -r file; do
-        if grep -qiE 'tcp.*syn|syn.*tcp' "$file"; then
-            cp "$file" "$file.bak.$(date +%s)"
-            sed -i '/tcp.*syn/d' "$file"
-            sed -i '/syn.*tcp/d' "$file"
-            sed -i '/^$/d' "$file"
-            log_info "Очищен файл: $file"
-        fi
-    done
-
-    ufw reload
+    persist_iptables_rules
     rm -f "$PORT_FILE"
 
-    log_success "Все правила с tcp и syn удалены"
+    log_success "SYN FIX удалён"
 }
 
 # ── Пункт 2: Отключение MSS ────────────────────────────────
@@ -341,6 +348,9 @@ EOF
 
         sysctl --system 2>/dev/null || log_info "sysctl --system выполнен без изменений"
     }
+
+    apply_sysctl
+    log_success "Параметры sysctl применены (BBR, fastopen, лимиты соединений)"
 
     systemctl stop telemt
 
