@@ -1,6 +1,10 @@
 # MTPROTO FIX By MEKO 
 [![Latest Release](https://img.shields.io/github/v/release/Mekotofeuka/MTPR-FIX-By-MEKO?color=neon)](https://github.com/Mekotofeuka/MTPR-FIX-By-MEKO/releases/latest) [![Stars](https://img.shields.io/github/stars/Mekotofeuka/MTPR-FIX-By-MEKO?style=social)](https://github.com/Mekotofeuka/MTPR-FIX-By-MEKO/stargazers) [![Forks](https://img.shields.io/github/forks/Mekotofeuka/MTPR-FIX-By-MEKO?style=social)](https://github.com/Mekotofeuka/MTPR-FIX-By-MEKO/network/members)
 
+Для чего нужен метод:
+Он помогает решить проблему, которая появилась с 4 июня, когда telegram клиент не может подключиться к mtproto прокси-серверу. 
+Признаки: подключение может зависать, долго устанавливаться или нестабильно проходить начальный TCP-этап.
+
 Данный скрипт используется для серверов с Telemt, фиксит проблему долгого первичного TCP-подключения клиентов, в отличие от созданных и популярных в сообществе ранее фиксов с SYN limit имеет ряд преимуществ:
 - Быстрое подключение за <3-8 сек. (Оригинальный SYN Limit: >10-20сек.) даже при большом количестве юзеров
 - Один порт для Ios/Android/Macos/Desktop etc.
@@ -10,7 +14,7 @@
 # Быстрый старт:
 
 Внимание, данный скрипт платный, цена: 1 🌟 на репозиторий
-1. Установить стандартный Telemt
+1. Установить стандартный Telemt версии 3.4.18 (версия новее работает нестабильно и появляются реконнекты.)
 2. Установить/обновить наш скрипт:
 ```Bash
 curl -fsSL https://raw.githubusercontent.com/Mekotofeuka/MTPR-FIX-By-MEKO/main/install.sh | sudo bash
