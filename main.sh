@@ -197,14 +197,12 @@ install_syn_fix() {
     log_warning "Будет выполнена установка SYN FIX на порт $port"
     echo ""
     echo -e "  ${BOLD}Что будет сделано:${NC}"
-    echo -e "  • Разрешён доступ по SSH на порту ${CYAN}$ssh_port${NC}"
     echo -e "  • Создана отдельная цепочка iptables ${CYAN}$SYNFIX_CHAIN${NC} для порта ${CYAN}$port${NC}"
     echo -e "  • Добавлены ${CYAN}4 правила${NC} SYN-фильтрации в эту цепочку"
     echo -e "  • Правила будут сохранены через ${CYAN}iptables-persistent${NC} (для применения после перезагрузки)"
     echo -e "  • Вы сможете удалить данную настройку через меню скрипта."
     echo ""
     log_warning "${BOLD}ВНИМАНИЕ:${NC} Данная настройка изменит файрвол системы."
-    log_warning "Если вы подключены не через SSH на порту $ssh_port, вы можете потерять доступ"
     echo ""
     echo -en "  ${BOLD}Продолжить установку? [y/N]:${NC} "
     local confirm
@@ -436,6 +434,15 @@ clear_screen() {
     clear 2>/dev/null || printf '\033[2J\033[H'
 }
 
+# ── Функция получения версии Telemt ─────────────────────────
+get_telemt_version() {
+    if command -v telemt >/dev/null 2>&1; then
+        telemt --version 2>/dev/null | head -1 | awk '{print $2}'
+    else
+        echo ""
+    fi
+}
+
 # ── Функция получения количества уникальных IP ─────────────
 get_online_count() {
     local port="443"
@@ -451,7 +458,7 @@ get_online_count() {
 show_header() {
     clear_screen
     echo ""
-    echo -e "  ${BOLD}MTProto Fixer by MEKO v0.77${NC}"
+    echo -e "  ${BOLD}MTProto Fixer by MEKO v0.78${NC}"
     echo -e "  ${DIM}===========================${NC}"
     echo ""
 
@@ -494,10 +501,27 @@ show_header() {
             port_display=" (порт не определён)"
         fi
 
+        # Получаем версию Telemt
+        local telemt_version=$(get_telemt_version)
+        local version_color=""
+        if [ -n "$telemt_version" ]; then
+            if [ "$telemt_version" = "3.4.18" ]; then
+                version_color="${GREEN}"
+            elif [[ "$(printf '%s\n' "3.4.18" "$telemt_version" | sort -V | head -n1)" != "3.4.18" ]]; then
+                version_color="${RED}"
+            else
+                version_color="${YELLOW}"
+            fi
+            version_display="${version_color}${telemt_version}${NC}"
+        else
+            version_display="${RED}не определена${NC}"
+        fi
+
         # Получаем количество уникальных IP
         local online_count=$(get_online_count)
 
         echo -e "  ${BOLD}Telemt:${NC} ${GREEN}Установлен${NC}${port_display}"
+        echo -e "  ${BOLD}Версия Telemt:${NC} $version_display"
         echo -e "  ${BOLD}Подключено к прокси:${NC} ${CYAN}$online_count${NC} человек"
 
         # Статус MSS
