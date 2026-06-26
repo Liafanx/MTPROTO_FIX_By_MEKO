@@ -487,7 +487,7 @@ get_online_count() {
 show_header() {
     clear_screen
     echo ""
-    echo -e "  ${BOLD}MTProto Fixer by MEKO v0.710${NC}"
+    echo -e "  ${BOLD}MTProto Fixer by MEKO v0.711${NC}"
     echo -e "  ${DIM}===========================${NC}"
     echo ""
 
@@ -566,7 +566,7 @@ show_header() {
         else
             synlimit_status="${GREEN}отключен${NC}"
         fi
-        echo -e "  ${BOLD}MSS:${NC} $mss_status  |  ${BOLD}synlimit:${NC} $synlimit_status"
+        echo -e "  ${BOLD}Встроенный MSS:${NC} $mss_status  |  ${BOLD}Встроенный synlimit:${NC} $synlimit_status"
     else
         echo -e "  ${BOLD}Telemt:${NC} ${RED}не обнаружен${NC}"
     fi
