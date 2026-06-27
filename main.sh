@@ -616,7 +616,7 @@ get_online_count() {
 show_header() {
     clear_screen
     echo ""
-    echo -e "  ${BOLD}MTProto Fixer by MEKO v0.711${NC}"
+    echo -e "  ${BOLD}MTProto Fixer by MEKO v0.8${NC}"
     echo -e "  ${DIM}===========================${NC}"
     echo ""
 
