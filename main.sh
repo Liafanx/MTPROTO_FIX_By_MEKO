@@ -33,30 +33,27 @@ CONFIG_PATH_FILE="/opt/mtpr-simple/config_path"
 
 # ── Проверяем, сохранён ли путь к конфигу ──────────────────
 if [ -f "$CONFIG_PATH_FILE" ] && [ -s "$CONFIG_PATH_FILE" ]; then
-    DEFAULT_CONFIG_TELEMT=$(cat "$CONFIG_PATH_FILE")
+    CONFIG_TELEMT=$(cat "$CONFIG_PATH_FILE")
+    if [ "$CONFIG_TELEMT" = "skip" ]; then
+        CONFIG_TELEMT=""
+    fi
 else
-    DEFAULT_CONFIG_TELEMT="/etc/telemt/telemt.toml"
-    echo -en "Укажите путь к конфигу Telemt (По умолчанию: [${DEFAULT_CONFIG_TELEMT}] если не меняли - нажмите Enter, или [N/n] для пропуска): "
+    echo -en "Укажите путь к конфигу Telemt (По умолчанию: [/etc/telemt/telemt.toml] если не меняли - нажмите Enter, или [N/n] если Telemt не используется): "
     read -r CONFIG_TELEMT_INPUT
 
-    # Проверяем, хочет ли пользователь пропустить ввод конфига
     if [[ "$CONFIG_TELEMT_INPUT" =~ ^[Nn]$ ]]; then
-        # Пользователь выбрал N - выходим без сохранения пути
-        CONFIG_TELEMT=""
-        log_info "Пропускаем указание пути к конфигу Telemt."
-        # Создаём пустой файл, чтобы не спрашивать при следующем запуске
+        # Пользователь выбрал N - пропускаем указание пути
         mkdir -p /opt/mtpr-simple
-        echo "skip" >"$CONFIG_PATH_FILE"
+        echo "skip" > "$CONFIG_PATH_FILE"
+        CONFIG_TELEMT=""
     else
         if [ -z "$CONFIG_TELEMT_INPUT" ]; then
-            CONFIG_TELEMT_INPUT="$DEFAULT_CONFIG_TELEMT"
+            CONFIG_TELEMT_INPUT="/etc/telemt/telemt.toml"
         fi
 
-        DEFAULT_CONFIG_TELEMT="$CONFIG_TELEMT_INPUT"
-
         # ── Проверяем, что указанный файл конфига действительно существует ──
-        if [ ! -f "$DEFAULT_CONFIG_TELEMT" ]; then
-            log_warning "Файл $DEFAULT_CONFIG_TELEMT не найден."
+        if [ ! -f "$CONFIG_TELEMT_INPUT" ]; then
+            log_warning "Файл $CONFIG_TELEMT_INPUT не найден."
             echo -en "  ${BOLD}Сохранить этот путь всё равно? [y/N]:${NC} "
             confirm_path=""
             read -r confirm_path
@@ -68,21 +65,9 @@ else
 
         # ── Сохраняем путь ──────────────────────────────────────
         mkdir -p /opt/mtpr-simple
-        echo "$DEFAULT_CONFIG_TELEMT" >"$CONFIG_PATH_FILE"
-        CONFIG_TELEMT="$DEFAULT_CONFIG_TELEMT"
+        echo "$CONFIG_TELEMT_INPUT" > "$CONFIG_PATH_FILE"
+        CONFIG_TELEMT="$CONFIG_TELEMT_INPUT"
     fi
-else
-    # Если файл существует и содержит "skip", значит пользователь ранее отказался от указания пути
-    if [ -f "$CONFIG_PATH_FILE" ] && [ "$(cat "$CONFIG_PATH_FILE")" = "skip" ]; then
-        CONFIG_TELEMT=""
-    else
-        CONFIG_TELEMT=$(cat "$CONFIG_PATH_FILE")
-    fi
-fi
-
-# Если CONFIG_TELEMT пуст или равен "skip", устанавливаем его в пустую строку для дальнейшей работы
-if [ -z "$CONFIG_TELEMT" ] || [ "$CONFIG_TELEMT" = "skip" ]; then
-    CONFIG_TELEMT=""
 fi
 
 # ── Файл для хранения порта ─────────────────────────────────
@@ -169,21 +154,21 @@ is_our_syn_fix_installed() {
 
 # ── ПРОВЕРКА НАЛИЧИЯ MSS И SYN_LIMIT В КОНФИГЕ TELEMT ──────
 is_mss_enabled() {
-    local config="$CONFIG_TELEMT"
-    if [ -f "$config" ]; then
-        if grep -E 'client_mss[[:space:]]*=' "$config" | grep -v '^#' | grep -q .; then
-            return 0
-        fi
+    if [ -z "$CONFIG_TELEMT" ] || [ ! -f "$CONFIG_TELEMT" ]; then
+        return 1
+    fi
+    if grep -E 'client_mss[[:space:]]*=' "$CONFIG_TELEMT" | grep -v '^#' | grep -q .; then
+        return 0
     fi
     return 1
 }
 
 is_synlimit_enabled() {
-    local config="$CONFIG_TELEMT"
-    if [ -f "$config" ]; then
-        if grep -E 'synlimit[[:space:]]*=' "$config" | grep -v '^#' | grep -q .; then
-            return 0
-        fi
+    if [ -z "$CONFIG_TELEMT" ] || [ ! -f "$CONFIG_TELEMT" ]; then
+        return 1
+    fi
+    if grep -E 'synlimit[[:space:]]*=' "$CONFIG_TELEMT" | grep -v '^#' | grep -q .; then
+        return 0
     fi
     return 1
 }
@@ -198,23 +183,22 @@ are_bad_options_enabled() {
 
 # ── ОТКЛЮЧЕНИЕ MSS И SYN_LIMIT (закомментирование строк) ──
 disable_bad_options() {
-    local config="$CONFIG_TELEMT"
-    if [ ! -f "$config" ]; then
-        log_error "Файл $config не найден"
+    if [ -z "$CONFIG_TELEMT" ] || [ ! -f "$CONFIG_TELEMT" ]; then
+        log_error "Файл конфига не найден или не указан"
         return 1
     fi
 
     local changed=0
 
     # Отключаем MSS
-    if grep -E 'client_mss[[:space:]]*=' "$config" | grep -v '^#' | grep -q .; then
-        sed -i '/client_mss[[:space:]]*=/s/^/#/' "$config"
+    if grep -E 'client_mss[[:space:]]*=' "$CONFIG_TELEMT" | grep -v '^#' | grep -q .; then
+        sed -i '/client_mss[[:space:]]*=/s/^/#/' "$CONFIG_TELEMT"
         changed=1
     fi
 
     # Отключаем synlimit
-    if grep -E 'synlimit[[:space:]]*=' "$config" | grep -v '^#' | grep -q .; then
-        sed -i '/synlimit[[:space:]]*=/s/^/#/' "$config"
+    if grep -E 'synlimit[[:space:]]*=' "$CONFIG_TELEMT" | grep -v '^#' | grep -q .; then
+        sed -i '/synlimit[[:space:]]*=/s/^/#/' "$CONFIG_TELEMT"
         changed=1
     fi
 
@@ -500,9 +484,9 @@ apply_basic_optimization() {
     echo ""
     log_info "Выполнение базовой оптимизации системы и Telemt..."
 
-    if [ -z "$CONFIG_TELEMT" ] || [ ! -f "$CONFIG_TELEMT" ]; then
-        log_warning "Файл конфига Telemt не указан или не найден, пропускаем оптимизацию параметров Telemt"
-    else
+    if [ -n "$CONFIG_TELEMT" ] && [ -f "$CONFIG_TELEMT" ]; then
+        systemctl stop telemt 2>/dev/null || true
+
         # Настройка max_connections
         if grep -q '^max_connections *=.*' "$CONFIG_TELEMT"; then
             if ! grep -q '^max_connections *= *16384' "$CONFIG_TELEMT"; then
@@ -518,6 +502,10 @@ apply_basic_optimization() {
                 sed -i 's/^client_handshake *= *.*/client_handshake = 15/' "$CONFIG_TELEMT"
             fi
         fi
+
+        systemctl restart telemt 2>/dev/null || true
+    else
+        log_warning "Файл конфига Telemt не найден или не указан, пропускаем оптимизацию параметров Telemt"
     fi
 
     if [ ! -f /etc/sysctl.conf ]; then
@@ -559,9 +547,6 @@ EOF
 
     # ★★★★★ ВЫЗЫВАЕМ ФУНКЦИЮ ★★★★★
     apply_sysctl
-
-    systemctl stop telemt 2>/dev/null || true
-    systemctl restart telemt 2>/dev/null || true
 
     log_success "Базовая оптимизация выполнена"
 }
@@ -623,7 +608,7 @@ get_telemt_version() {
 # ── Функция получения количества уникальных IP ─────────────
 get_online_count() {
     local port="443"
-    if [ -f "$CONFIG_TELEMT" ]; then
+    if [ -n "$CONFIG_TELEMT" ] && [ -f "$CONFIG_TELEMT" ]; then
         local config_port=$(grep -E '^port[[:space:]]*=' "$CONFIG_TELEMT" | head -1 | awk -F'=' '{print $2}' | tr -d ' "')
         if [[ "$config_port" =~ ^[0-9]+$ ]]; then
             port="$config_port"
@@ -635,7 +620,7 @@ get_online_count() {
 show_header() {
     clear_screen
     echo ""
-    echo -e "  ${BOLD}MTProto Fixer by MEKO v0.81${NC}"
+    echo -e "  ${BOLD}MTProto Fixer by MEKO v0.82${NC}"
     echo -e "  ${DIM}===========================${NC}"
     echo ""
 
