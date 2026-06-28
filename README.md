@@ -99,6 +99,14 @@ curl -fsSL https://raw.githubusercontent.com/Mekotofeuka/MTPROTO_FIX_By_MEKO/mai
 
 от **0.1 USDT**
 
+USDT TRC20
+```Bash
+TGmBaRYmQwSyC6sRaumaMf9CbEuVAk4Eff
+```
+USDT BEP20
+```Bash
+0x2AF1581aA7b696Ca28C70B5D29756Da3ca577D65
+```
 
 
 Также вы можете поддержать меня, воспользовавшись моим сервисом:
