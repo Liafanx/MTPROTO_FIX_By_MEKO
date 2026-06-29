@@ -654,15 +654,21 @@ get_online_count() {
 show_header() {
     clear_screen
     echo ""
-    echo -e "  ${BOLD}MTProto Fixer by MEKO v0.87${NC}"
+    echo -e "  ${BOLD}MTProto Fixer by MEKO v0.88${NC}"
     echo -e "  ${DIM}===========================${NC}"
     echo ""
 
     # Обновляем порт из конфига при каждом показе меню
     if [ -n "$CONFIG_TELEMT" ] && [ -f "$CONFIG_TELEMT" ] && pgrep -x telemt >/dev/null 2>&1; then
         local current_port=$(grep -E '^port[[:space:]]*=' "$CONFIG_TELEMT" | head -1 | awk -F'=' '{print $2}' | tr -d ' "')
-        if [[ "$current_port" =~ ^[0-9]+$ ]] && [ "$current_port" != "$(get_saved_port)" ]; then
+        if [[ "$current_port" =~ ^[0-9]+$ ]]; then
             save_port "$current_port"
+        else
+            # Если порт не определён, но Telemt работает — пробуем определить через ss
+            local detected_port=$(ss -tlnp 2>/dev/null | grep telemt | grep -oP ':\K[0-9]+' | head -1)
+            if [[ -n "$detected_port" ]]; then
+                save_port "$detected_port"
+            fi
         fi
     fi
 
@@ -703,10 +709,17 @@ show_header() {
     # Если установлен Telemt - показываем детали
     if [ "$telemt_installed" = true ]; then
         local port_display=""
-        if [ -n "$CONFIG_TELEMT" ] && [ -f "$CONFIG_TELEMT" ]; then
+        local saved_port=$(get_saved_port)
+        
+        # Сначала пытаемся получить порт из сохранённого файла
+        if [ -n "$saved_port" ] && [[ "$saved_port" =~ ^[0-9]+$ ]]; then
+            port_display=" (порт $saved_port)"
+        # Если нет — пытаемся получить из конфига
+        elif [ -n "$CONFIG_TELEMT" ] && [ -f "$CONFIG_TELEMT" ]; then
             local port=$(grep -E '^port[[:space:]]*=' "$CONFIG_TELEMT" | head -1 | awk -F'=' '{print $2}' | tr -d ' "')
             if [[ "$port" =~ ^[0-9]+$ ]]; then
                 port_display=" (порт $port)"
+                save_port "$port"
             else
                 port_display=" (порт не определён)"
             fi
