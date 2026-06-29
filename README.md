@@ -6,12 +6,12 @@
 
 
 
-[![Latest Release](https://img.shields.io/github/v/release/Mekotofeuka/MTPROTO_FIX_By_MEKO?color=neon)](https://github.com/Mekotofeuka/MTPROTO_FIX_By_MEKO/releases/latest) [![Stars](https://img.shields.io/github/stars/Mekotofeuka/MTPROTO_FIX_By_MEKO?style=social)](https://github.com/Mekotofeuka/MTPROTO_FIX_By_MEKO/stargazers) [![Forks](https://img.shields.io/github/forks/Mekotofeuka/MTPROTO_FIX_By_MEKO?style=social)](https://github.com/Mekotofeuka/MTPROTO_FIX_By_MEKO/network/members)
+[![Latest Release](https://img.shields.io/github/v/release/Mekotofeuka/MTPROTO_FIX_By_MEKO?color=neon)](https://github.com/Mekotofeuka/MTPROTO_FIX_By_MEKO/releases/latest) [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) [![Stars](https://img.shields.io/github/stars/Mekotofeuka/MTPROTO_FIX_By_MEKO?style=social)](https://github.com/Mekotofeuka/MTPROTO_FIX_By_MEKO/stargazers) [![Forks](https://img.shields.io/github/forks/Mekotofeuka/MTPROTO_FIX_By_MEKO?style=social)](https://github.com/Mekotofeuka/MTPROTO_FIX_By_MEKO/network/members)
 
 </div>
 
 <p align="center">
-· <a href="#Быстрый-старт">Установка</a> · 
+  · <a href="#Быстрый-старт">Установка</a> · <a href="#Как-работает">FAQ</a> · <a href="#Возможные-проблемыпочему-у-меня-может-не-работать">Решение проблем</a> ·
 </p>
 
 
@@ -83,7 +83,7 @@ curl -fsSL https://raw.githubusercontent.com/Mekotofeuka/MTPROTO_FIX_By_MEKO/mai
 3. Пропускаем информацию про Telemt, открывается меню скрипта, жмём **1** и жмём y
 4. Подключаемся к прокси и пользуемся
 
-# Возможные проблемы("почему у меня может не работать?")
+## Возможные проблемы("почему у меня может не работать?")
 
 **Если вам не помог фикс, наибольшая вероятность в том, что у вас более старая модель ios, либо один из последних айфонов, на них пока ищем решение(если проблема в подключении только с Ios) и его ttl/длина пакета отлична, либо у вас на сервере остались какие-то старые настройки, это встречается пока в большинстве случаев.**
 
