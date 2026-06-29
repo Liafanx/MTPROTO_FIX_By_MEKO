@@ -130,3 +130,7 @@ USDT BEP20
 - [@Bxhost](https://github.com/bxhost)
 - https://assyoucandy.github.io/telemt-server-guide/telemt-keepalive-guide.html
 - https://h1de0x.github.io/telemt-tune/
+
+## Оригинальные репозитории прокси
+- Telemt https://github.com/telemt/telemt
+- Mtproto.zig https://github.com/sleep3r/mtproto.zig
