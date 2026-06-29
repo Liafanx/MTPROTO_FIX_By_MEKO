@@ -86,6 +86,44 @@ install_telemt() {
     read -rsn1
 }
 
+# ── Функция удаления Telemt ──────────────────────────────────
+purge_telemt() {
+    echo ""
+    echo -e "  ${RED}${BOLD}ВНИМАНИЕ:${NC} Будет выполнено полное удаление Telemt!"
+    echo ""
+    echo -e "  ${BOLD}Будут удалены:${NC}"
+    echo -e "  • Все файлы Telemt"
+    echo -e "  • Конфигурационные файлы"
+    echo -e "  • Systemd служба"
+    echo ""
+    log_warning "Это действие нельзя отменить!"
+    echo -en "  ${BOLD}Продолжить удаление? [y/N]:${NC} "
+    local confirm
+    read -r confirm
+
+    if [[ ! "$confirm" =~ ^[yY]$ ]]; then
+        echo -e "  ${GRAY}Удаление отменено${NC}"
+        echo ""
+        echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
+        read -rsn1
+        return 1
+    fi
+
+    echo ""
+    echo -e "  ${BLUE}[i]${NC} Удаление Telemt..."
+    echo ""
+    if curl -fsSL https://raw.githubusercontent.com/telemt/telemt/main/install.sh | sh -s -- purge; then
+        echo ""
+        echo -e "  ${GREEN}[✓]${NC} Telemt успешно удалён"
+    else
+        echo ""
+        echo -e "  ${RED}[✗]${NC} Ошибка удаления Telemt"
+    fi
+    echo ""
+    echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
+    read -rsn1
+}
+
 # ── Функция открытия конфига ────────────────────────────────
 edit_config() {
     local config_path=$(get_config_path)
@@ -143,6 +181,7 @@ while true; do
     echo -e "  ${CYAN}[2]${NC}  Открыть конфиг Telemt"
     echo -e "  ${CYAN}[3]${NC}  Перезапустить Telemt"
     echo -e "  ${CYAN}[4]${NC}  Обновить путь к конфигу Telemt"
+    echo -e "  ${RED}[5]${NC}  Удалить Telemt"
     echo -e "  ${CYAN}[0]${NC}  Назад в прокси меню"
     echo ""
     
@@ -166,6 +205,9 @@ while true; do
             ;;
         4)
             update_config_path
+            ;;
+        5)
+            purge_telemt
             ;;
         0)
             exec /opt/mtpr-simple/proxys/proxymenu.sh
