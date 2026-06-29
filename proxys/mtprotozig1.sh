@@ -176,15 +176,15 @@ purge_proxy() {
 while true; do
     clear
     echo ""
-    echo -e "  ${BOLD}MTProtoZig меню${NC}"
+    echo -e "  ${BOLD}MTProtoZig меню V0.1${NC}"
     echo -e "  ${DIM}===========================${NC}"
     echo ""
-    echo -e "  ${CYAN}[1]${NC}  Установить Zig CLI"
-    echo -e "  ${CYAN}[2]${NC}  Установить прокси"
-    echo -e "  ${CYAN}[3]${NC}  Открыть конфиг"
-    echo -e "  ${CYAN}[4]${NC}  Перезапустить прокси"
-    echo -e "  ${RED}[5]${NC}  Удалить MTProtoZig"
-    echo -e "  ${CYAN}[0]${NC}  Назад в прокси меню"
+    echo -e "  ${CYAN}[1]${NC}${BOLD}  Установить Zig CLI"
+    echo -e "  ${CYAN}[2]${NC}${BOLD}  Установить прокси"
+    echo -e "  ${CYAN}[3]${NC}${BOLD}  Открыть конфиг"
+    echo -e "  ${CYAN}[4]${NC}${BOLD}  Перезапустить прокси"
+    echo -e "  ${RED}[5]${BOLD}  Удалить MTProtoZig"
+    echo -e "  ${CYAN}[0]${NC}${BOLD}  Назад в прокси меню"
     echo ""
     echo -en "  ${BOLD}Выбор:${NC} "
     read -r choice
