@@ -86,15 +86,64 @@ update_config_path() {
 # ── Функция установки Telemt ────────────────────────────────
 install_telemt() {
     echo ""
-    echo -e "  ${BLUE}[i]${NC} Установка Telemt версии 3.4.18..."
+    echo -e "  ${BLUE}[i]${NC} Установка Telemt"
     echo ""
-    if curl -fsSL https://raw.githubusercontent.com/telemt/telemt/main/install.sh | sh -s -- 3.4.18; then
+    echo -e "  ${BOLD}Доступные варианты:${NC}"
+    echo -e "  ${GREEN}[Enter]${NC} — установить последнюю версию"
+    echo -e "  ${GREEN}[версия]${NC} — например, 3.4.18"
+    echo -e "  ${GRAY}[N/n]${NC} — отмена"
+    echo ""
+    echo -en "  ${BOLD}Введите номер версии или нажмите Enter для последней:${NC} "
+    read -r version_input
+
+    if [[ "$version_input" =~ ^[Nn]$ ]]; then
         echo ""
-        echo -e "  ${GREEN}[✓]${NC} Telemt успешно установлен"
-    else
+        echo -e "  ${GRAY}Установка отменена${NC}"
         echo ""
-        echo -e "  ${RED}[✗]${NC} Ошибка установки Telemt"
+        echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
+        read -rsn1
+        return 0
     fi
+
+    local install_version="latest"
+    local display_version="последнюю"
+    
+    if [ -n "$version_input" ]; then
+        # Проверяем, что введена корректная версия (цифры и точки)
+        if [[ "$version_input" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            install_version="$version_input"
+            display_version="$version_input"
+        else
+            echo ""
+            echo -e "  ${YELLOW}[!]${NC} Некорректный формат версии. Используйте формат X.Y.Z"
+            echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
+            read -rsn1
+            return 1
+        fi
+    fi
+
+    echo ""
+    echo -e "  ${BLUE}[i]${NC} Установка Telemt версии ${display_version}..."
+    echo ""
+    
+    if [ "$install_version" = "latest" ]; then
+        if curl -fsSL https://raw.githubusercontent.com/telemt/telemt/main/install.sh | sh; then
+            echo ""
+            echo -e "  ${GREEN}[✓]${NC} Telemt успешно установлен (последняя версия)"
+        else
+            echo ""
+            echo -e "  ${RED}[✗]${NC} Ошибка установки Telemt"
+        fi
+    else
+        if curl -fsSL https://raw.githubusercontent.com/telemt/telemt/main/install.sh | sh -s -- "$install_version"; then
+            echo ""
+            echo -e "  ${GREEN}[✓]${NC} Telemt версии ${install_version} успешно установлен"
+        else
+            echo ""
+            echo -e "  ${RED}[✗]${NC} Ошибка установки Telemt версии ${install_version}"
+        fi
+    fi
+    
     echo ""
     echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
     read -rsn1
@@ -188,15 +237,15 @@ restart_telemt() {
 while true; do
     clear
     echo ""
-    echo -e "  ${BOLD}Telemt меню v0.2${NC}"
+    echo -e "  ${BOLD}Telemt меню v0.3${NC}"
     echo -e "  ${DIM}===========================${NC}"
     echo ""
-    echo -e "  ${CYAN}[1]${NC}  ${BOLD}Установить Telemt 3.4.18"
-    echo -e "  ${CYAN}[2]${NC}  ${BOLD}Открыть конфиг Telemt"
-    echo -e "  ${CYAN}[3]${NC}  ${BOLD}Перезапустить Telemt"
-    echo -e "  ${CYAN}[4]${NC}  ${BOLD}Обновить путь к конфигу Telemt"
-    echo -e "  ${RED}[5]${NC}  ${BOLD}Удалить Telemt"
-    echo -e "  ${CYAN}[0]${NC}  ${BOLD}Назад в прокси меню"
+    echo -e "  ${CYAN}[1]${NC}  ${BOLD}Установить Telemt${NC}"
+    echo -e "  ${CYAN}[2]${NC}  ${BOLD}Открыть конфиг Telemt${NC}"
+    echo -e "  ${CYAN}[3]${NC}  ${BOLD}Перезапустить Telemt${NC}"
+    echo -e "  ${CYAN}[4]${NC}  ${BOLD}Обновить путь к конфигу Telemt${NC}"
+    echo -e "  ${RED}[5]${NC}  ${BOLD}Удалить Telemt${NC}"
+    echo -e "  ${CYAN}[0]${NC}  ${BOLD}Назад в прокси меню${NC}"
     echo ""
     
     # Проверяем, установлен ли Telemt, и показываем соответствующий статус
