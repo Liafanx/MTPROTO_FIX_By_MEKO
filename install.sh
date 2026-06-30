@@ -80,4 +80,9 @@ echo ""
 echo -e "  Для открытия меню при дальнейшей работе используйте команду ${BOLD}mekopr${NC}"
 echo ""
 
-exec /opt/mtpr-simple/main.sh </dev/tty
+if [ -r /dev/tty ]; then
+    exec /opt/mtpr-simple/main.sh </dev/tty
+fi
+
+echo -e "  ${YELLOW}[!]${NC} Интерактивный терминал недоступен, меню не запущено."
+echo -e "  Запустите ${BOLD}sudo mekopr${NC}, чтобы открыть меню вручную."
