@@ -48,7 +48,6 @@ else
     read -r CONFIG_TELEMT_INPUT
 
     if [[ "$CONFIG_TELEMT_INPUT" =~ ^[Nn]$ ]]; then
-        # Пользователь выбрал N - пропускаем указание пути
         mkdir -p /opt/mtpr-simple
         echo "skip" > "$CONFIG_PATH_FILE"
         CONFIG_TELEMT=""
@@ -57,7 +56,6 @@ else
             CONFIG_TELEMT_INPUT="/etc/telemt/telemt.toml"
         fi
 
-        # ── Проверяем, что указанный файл конфига действительно существует ──
         if [ ! -f "$CONFIG_TELEMT_INPUT" ]; then
             log_warning "Файл $CONFIG_TELEMT_INPUT не найден."
             echo -en "  ${BOLD}Сохранить этот путь всё равно? [y/N]:${NC} "
@@ -69,7 +67,6 @@ else
             fi
         fi
 
-        # ── Сохраняем путь ──────────────────────────────────────
         mkdir -p /opt/mtpr-simple
         echo "$CONFIG_TELEMT_INPUT" > "$CONFIG_PATH_FILE"
         CONFIG_TELEMT="$CONFIG_TELEMT_INPUT"
@@ -110,7 +107,6 @@ get_ssh_port() {
         done
     fi
 
-    # Дефолтное значение
     echo "22"
     return 0
 }
@@ -135,12 +131,10 @@ is_syn_fix_chain_installed() {
     iptables -L "$SYNFIX_CHAIN" -n >/dev/null 2>&1
 }
 
-# ── ПРОВЕРКА СТАТУСА SYSTEMD СЕРВИСА SYN FIX ─────────────────
 is_syn_fix_service_running() {
     systemctl is-active --quiet mtpr-synfix.service
 }
 
-# ── ПОЛУЧЕНИЕ СТАТУСА SYN FIX (для show_header) ────────────────
 get_synfix_status() {
     if is_syn_fix_chain_installed; then
         if is_syn_fix_service_running; then
@@ -153,12 +147,11 @@ get_synfix_status() {
     fi
 }
 
-# ── Для обратной совместимости с остальным кодом меню ──────
 is_our_syn_fix_installed() {
     is_syn_fix_chain_installed
 }
 
-# ── ПРОВЕРКА НАЛИЧИЯ MSS И SYN_LIMIT В КОНФИГЕ TELEMT ──────
+# ── ПРОВЕРКА MSS И SYN_LIMIT В КОНФИГЕ TELEMT ──────────────
 is_mss_enabled() {
     if [ -z "$CONFIG_TELEMT" ] || [ ! -f "$CONFIG_TELEMT" ]; then
         return 1
@@ -187,7 +180,6 @@ are_bad_options_enabled() {
     fi
 }
 
-# ── ОТКЛЮЧЕНИЕ MSS И SYN_LIMIT (закомментирование строк) ──
 disable_bad_options() {
     if [ -z "$CONFIG_TELEMT" ] || [ ! -f "$CONFIG_TELEMT" ]; then
         log_error "Файл конфига не найден или не указан"
@@ -196,13 +188,11 @@ disable_bad_options() {
 
     local changed=0
 
-    # Отключаем MSS
     if grep -E 'client_mss[[:space:]]*=' "$CONFIG_TELEMT" | grep -v '^#' | grep -q .; then
         sed -i '/client_mss[[:space:]]*=/s/^/#/' "$CONFIG_TELEMT"
         changed=1
     fi
 
-    # Отключаем synlimit
     if grep -E 'synlimit[[:space:]]*=' "$CONFIG_TELEMT" | grep -v '^#' | grep -q .; then
         sed -i '/synlimit[[:space:]]*=/s/^/#/' "$CONFIG_TELEMT"
         changed=1
@@ -215,50 +205,42 @@ disable_bad_options() {
     fi
 }
 
-# ── Установка SYN FIX ──────────────────────────────────────
+# ── УСТАНОВКА SYN FIX ──────────────────────────────────────
 install_syn_fix() {
-    local port
+    local ports_input
+    local fix_choice
     local auto_install=false
-    local forced_port=""
-    local fix_choice=""
+    local forced_ports=""
+    local FIX_TYPE="new"
 
-    # Проверяем аргумент -auto_install
     if [[ "$1" == "-auto_install" ]]; then
         auto_install=true
-        forced_port="$2"
-        # В авто-режиме всегда ставим новый вариант
+        forced_ports="$2"
         FIX_TYPE="new"
     fi
 
     ssh_port=$(get_ssh_port)
 
-    # В авто-режиме берём порт из аргумента, иначе дефолтный
     if [ "$auto_install" = true ]; then
-        if [[ "$forced_port" =~ ^[0-9]+$ ]]; then
-            port="$forced_port"
-            log_info "Используем порт, переданный аргументом: $port"
+        if [[ -n "$forced_ports" ]]; then
+            ports_input="$forced_ports"
+            log_info "Используем порты, переданные аргументом: $ports_input"
         else
-            log_info "Файл с портом не найден, используем 443"
-            port="443"
+            log_info "Порты не переданы, используем 443"
+            ports_input="443"
         fi
     else
-        # Обычный интерактивный режим
         echo ""
-        echo -en "  ${BOLD}Введите порт для SYN FIX (по умолчанию 443):${NC} "
-        read -r port
-        if [ -z "$port" ]; then
-            port="443"
-        fi
-        if ! [[ "$port" =~ ^[0-9]+$ ]] || [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; then
-            log_error "Некорректный порт, используем 443"
-            port="443"
+        echo -en "  ${BOLD}Введите порты для SYN FIX (через запятую, например: 443,8443,8080):${NC} "
+        read -r ports_input
+        if [ -z "$ports_input" ]; then
+            ports_input="443"
         fi
 
-        # ── ВЫБОР ТИПА ФИКСА ──────────────────────────────────
         echo ""
         echo -e "  ${BOLD}Выберите тип SYN FIX:${NC}"
-        echo -e "  ${GREEN}[1]${NC}  ${BOLD}Новый вариант${NC} (${BOLD}v3.0О${NC} пределение ios с помощью u32) — ${GREEN}рекомендуется${NC}"
-        echo -e "  ${CYAN}[2]${NC}  ${BOLD}Старый вариант${NC} (${BOLD}v2.0${NC} Определение is и других устройств по TTL+Length)"
+        echo -e "  ${GREEN}[1]${NC}  ${BOLD}Новый вариант${NC} (u32 + ACCEPT без лимита) — ${GREEN}рекомендуется${NC}"
+        echo -e "  ${CYAN}[2]${NC}  ${BOLD}Старый вариант${NC} (TTL+Length + ACCEPT без лимита)"
         echo ""
         echo -en "  ${NC}${BOLD}Ввод (Новый - ${GREEN}${BOLD}1 или enter${NC}${BOLD}, старый - ${RED}${BOLD}2${NC}${BOLD}):${NC} "
         read -r fix_choice
@@ -275,14 +257,34 @@ install_syn_fix() {
         fi
     fi
 
-    # ── ПОДТВЕРЖДЕНИЕ ПЕРЕД УСТАНОВКОЙ ──────────────────────
+    # Парсим порты
+    IFS=',' read -ra PORTS_ARRAY <<< "$ports_input"
+    local valid_ports=()
+    for p in "${PORTS_ARRAY[@]}"; do
+        p=$(echo "$p" | xargs)
+        if [[ "$p" =~ ^[0-9]+$ ]] && [ "$p" -ge 1 ] && [ "$p" -le 65535 ]; then
+            valid_ports+=("$p")
+        else
+            log_warning "Некорректный порт '$p' пропущен"
+        fi
+    done
+
+    if [ ${#valid_ports[@]} -eq 0 ]; then
+        log_error "Нет корректных портов для установки"
+        return 1
+    fi
+
+    local ports_str=$(IFS=,; echo "${valid_ports[*]}")
+    log_info "Установка SYN FIX на порты: $ports_str"
+    save_port "$ports_str"
+
     if [ "$auto_install" = false ]; then
         echo ""
-        log_warning "Будет выполнена установка SYN FIX на порт $port"
+        log_warning "Будет выполнена установка SYN FIX на порты: $ports_str"
         echo ""
         echo -e "  ${BOLD}Что будет сделано:${NC}"
-        echo -e "  • Создана отдельная цепочка iptables ${CYAN}$SYNFIX_CHAIN${NC} для порта ${CYAN}$port${NC}"
-        echo -e "  • Добавлены правила SYN-фильтрации в эту цепочку"
+        echo -e "  • Создана отдельная цепочка iptables ${CYAN}$SYNFIX_CHAIN${NC}"
+        echo -e "  • Добавлены правила SYN-фильтрации для портов: ${CYAN}$ports_str${NC}"
         echo -e "  • Вы сможете удалить данную настройку через меню скрипта."
         echo ""
         log_warning "${BOLD}ВНИМАНИЕ:${NC} Данная настройка изменит файрвол системы."
@@ -290,7 +292,6 @@ install_syn_fix() {
         echo -en "  ${BOLD}Продолжить установку? [y/N]:${NC} "
         local confirm
         read -r confirm
-
         if [[ ! "$confirm" =~ ^[yY]$ ]]; then
             log_info "Установка отменена"
             sleep 0.5
@@ -298,18 +299,14 @@ install_syn_fix() {
         fi
     fi
 
-    log_info "Установка SYN FIX на порт $port..."
-    save_port "$port"
-
-    # ── Генерируем и запускаем скрипт применения правил ─────────
-    generate_apply_script "$FIX_TYPE"
+    generate_apply_script "$FIX_TYPE" "${valid_ports[@]}"
     generate_service_unit
     systemctl daemon-reload
-    PORT="$port" /opt/mtpr-simple/apply-mtpr-synfix.sh
+    PORT="$ports_str" /opt/mtpr-simple/apply-mtpr-synfix.sh
     systemctl enable mtpr-synfix.service
     systemctl restart mtpr-synfix.service
 
-    log_success "SYN FIX успешно Установлен на порт $port"
+    log_success "SYN FIX успешно установлен на порты: $ports_str"
 }
 
 # ── Удаление правил из файла iptables ──────────────────────
@@ -323,21 +320,15 @@ remove_iptables_rules() {
     
     log_info "Проверка наличия наших правил в $rules_file..."
     
-    # Проверяем, есть ли наша цепочка в файле
     if ! grep -q "MTPR_SYNFIX" "$rules_file"; then
         log_warning "Наши правила (MTPR_SYNFIX) не найдены в файле"
         return 1
     fi
     
-    # Наши правила есть - запрашиваем подтверждение
     echo ""
     echo -e "  ${BOLD}Обнаружены наши правила SYN FIX в файле${NC}"
     echo -e "  ${DIM}Что будет сделано:${NC}"
-    if grep -q "^COMMIT" "$rules_file" && grep -c "MTPR_SYNFIX" "$rules_file" | grep -q '^1$'; then
-        echo -e "  • Будет удалён весь файл (только наши правила)"
-    else
-        echo -e "  • Будут удалены только строки с цепочкой $SYNFIX_CHAIN"
-    fi
+    echo -e "  • Будут удалены только строки с цепочкой $SYNFIX_CHAIN"
     echo ""
     log_warning "Это изменит конфигурацию iptables-persistent!"
     echo ""
@@ -352,7 +343,6 @@ remove_iptables_rules() {
     
     echo ""
     
-    # Удаляем только наши правила (строки с MTPR_SYNFIX)
     local temp_file=$(mktemp)
     grep -v "MTPR_SYNFIX" "$rules_file" > "$temp_file"
     mv "$temp_file" "$rules_file"
@@ -361,11 +351,10 @@ remove_iptables_rules() {
     log_success "Правила $SYNFIX_CHAIN удалены из $rules_file"
 }
 
-# ── Удаление SYN FIX (только нашей цепочки) ────────────────
+# ── Удаление SYN FIX ────────────────────────────────────────
 remove_syn_fix() {
     log_info "Удаление SYN FIX..."
 
-    # ── Останавливаем и отключаем systemd сервис ────────────────
     systemctl stop mtpr-synfix.service 2>/dev/null || true
     systemctl disable mtpr-synfix.service 2>/dev/null || true
 
@@ -381,17 +370,12 @@ remove_syn_fix() {
     fi
 
     rm -f "$PORT_FILE"
-
-    # Удаляем systemd юнит файл
     rm -f /etc/systemd/system/mtpr-synfix.service
-
-    # Перезагружаем менеджер служб
     systemctl daemon-reload
 
     log_success "SYN FIX удалён"
 }
 
-# ── Перезапуск сервиса SYN FIX ─────────
 restart_syn_fix_service() {
     log_info "Перезапуск сервиса mtpr-synfix.service..."
     systemctl restart mtpr-synfix.service
@@ -401,21 +385,23 @@ restart_syn_fix_service() {
 # ── Генерация скрипта применения правил ──────────────────────────
 generate_apply_script() {
     local fix_type="${1:-new}"
+    shift
+    local ports=("$@")
 
     if [ "$fix_type" = "old" ]; then
         cat >/opt/mtpr-simple/apply-mtpr-synfix.sh <<'APPLY_SCRIPT_EOF'
 #!/bin/bash
 set -e
 
-PORT="${PORT:-$(cat /opt/mtpr-simple/port 2>/dev/null)}"
-
-if [ -z "$PORT" ]; then
-    echo "SYN FIX: Порт не указан, выход" >&2
+# ── Парсим порты из файла ──────────────────────────────────
+if [ -f /opt/mtpr-simple/port ]; then
+    PORTS=$(cat /opt/mtpr-simple/port)
+else
+    echo "SYN FIX: Файл с портами не найден" >&2
     exit 1
 fi
 
 CHAIN="MTPR_SYNFIX"
-
 SSH_PORT=$(sshd -T 2>/dev/null | grep '^port ' | awk '{print $2}' || echo 22)
 
 if ! iptables -C INPUT -p tcp --dport "$SSH_PORT" -j ACCEPT 2>/dev/null; then
@@ -431,47 +417,54 @@ if ! iptables -t filter -C INPUT -j "$CHAIN" 2>/dev/null; then
     echo "Цепочка $CHAIN подключена к INPUT"
 fi
 
-# ── 1. iOS — проверка TTL+Length, ACCEPT БЕЗ ЛИМИТА ────────
-iptables -t filter -A "$CHAIN" -p tcp --dport "$PORT" --syn \
-    -m tcp --tcp-flags SYN SYN \
-    -m length --length 64 \
-    -m ttl --ttl-lt 65 \
-    -j ACCEPT
+# ── Проходим по каждому порту ──────────────────────────────
+IFS=',' read -ra PORT_ARRAY <<< "$PORTS"
+for PORT in "${PORT_ARRAY[@]}"; do
+    PORT=$(echo "$PORT" | xargs)
+    [ -z "$PORT" ] && continue
 
-# ── 2. ВТОРОЙ СЛОЙ — все остальные (Android/Desktop) → hashlimit 54/мин ──
-iptables -t filter -A "$CHAIN" -p tcp --dport "$PORT" --syn \
-    -m hashlimit \
-    --hashlimit-name mtproto_"$PORT" \
-    --hashlimit-mode srcip \
-    --hashlimit-upto 54/minute \
-    --hashlimit-burst 1 \
-    --hashlimit-htable-expire 60000 \
-    --hashlimit-htable-size 32768 \
-    -j ACCEPT
+    # ── iOS — проверка TTL+Length, ACCEPT БЕЗ ЛИМИТА ────────
+    iptables -t filter -A "$CHAIN" -p tcp --dport "$PORT" --syn \
+        -m tcp --tcp-flags SYN SYN \
+        -m length --length 64 \
+        -m ttl --ttl-lt 65 \
+        -j ACCEPT
 
-# ── 3. REJECT ────────────────────────
-iptables -t filter -A "$CHAIN" -p tcp --dport "$PORT" --syn \
-    -j REJECT --reject-with tcp-reset
+    # ── ВТОРОЙ СЛОЙ — все остальные → hashlimit 54/мин ──────
+    iptables -t filter -A "$CHAIN" -p tcp --dport "$PORT" --syn \
+        -m hashlimit \
+        --hashlimit-name mtproto_"$PORT" \
+        --hashlimit-mode srcip \
+        --hashlimit-upto 54/minute \
+        --hashlimit-burst 1 \
+        --hashlimit-htable-expire 60000 \
+        --hashlimit-htable-size 32768 \
+        -j ACCEPT
 
-#обратно в INPUT
+    # ── REJECT для всех остальных ────────────────────────────
+    iptables -t filter -A "$CHAIN" -p tcp --dport "$PORT" --syn \
+        -j REJECT --reject-with tcp-reset
+done
+
+# обратно в INPUT
 iptables -t filter -A "$CHAIN" -j RETURN
 
 APPLY_SCRIPT_EOF
     else
-        # Новый вариант (по умолчанию) — iOS ACCEPT без лимита
+        # Новый вариант (u32 + ACCEPT без лимита)
         cat >/opt/mtpr-simple/apply-mtpr-synfix.sh <<'APPLY_SCRIPT_EOF'
 #!/bin/bash
 set -e
 
-PORT="${PORT:-$(cat /opt/mtpr-simple/port 2>/dev/null)}"
-
-if [ -z "$PORT" ]; then
-    echo "SYN FIX: Порт не указан, выход" >&2
+# ── Парсим порты из файла ──────────────────────────────────
+if [ -f /opt/mtpr-simple/port ]; then
+    PORTS=$(cat /opt/mtpr-simple/port)
+else
+    echo "SYN FIX: Файл с портами не найден" >&2
     exit 1
 fi
 
 CHAIN="MTPR_SYNFIX"
-
 SSH_PORT=$(sshd -T 2>/dev/null | grep '^port ' | awk '{print $2}' || echo 22)
 
 if ! iptables -C INPUT -p tcp --dport "$SSH_PORT" -j ACCEPT 2>/dev/null; then
@@ -490,25 +483,32 @@ fi
 # ── 1. Маркировка iOS в mangle ──────────────────────────────
 iptables -t mangle -A PREROUTING -m u32 --u32 "32 & 0x00FFFFFF = 0x0002FFFF && 40 & 0xFF000000 = 0x02000000 && 44 & 0xFFFF0000 = 0x01030000 && 48 & 0xFFFFFF00 = 0x01010800 && 60 & 0xFFFFFFFF = 0x04020000" -j MARK --set-mark 0x400
 
-# ── 2. ACCEPT для маркированных iOS (БЕЗ ЛИМИТА) ─────────────
-iptables -t filter -A "$CHAIN" -m mark --mark 0x400 -j ACCEPT
+# ── Проходим по каждому порту ──────────────────────────────
+IFS=',' read -ra PORT_ARRAY <<< "$PORTS"
+for PORT in "${PORT_ARRAY[@]}"; do
+    PORT=$(echo "$PORT" | xargs)
+    [ -z "$PORT" ] && continue
 
-# ── 3. ВТОРОЙ СЛОЙ — все остальные (Android/Desktop) → hashlimit 54/мин ──
-iptables -t filter -A "$CHAIN" -p tcp --dport "$PORT" --syn \
-    -m hashlimit \
-    --hashlimit-name mtproto_"$PORT" \
-    --hashlimit-mode srcip \
-    --hashlimit-upto 54/minute \
-    --hashlimit-burst 1 \
-    --hashlimit-htable-expire 60000 \
-    --hashlimit-htable-size 32768 \
-    -j ACCEPT
+    # ── ACCEPT для маркированных iOS (БЕЗ ЛИМИТА) ─────────────
+    iptables -t filter -A "$CHAIN" -p tcp --dport "$PORT" --syn -m mark --mark 0x400 -j ACCEPT
 
-# ── 4. REJECT ────────────────────────
-iptables -t filter -A "$CHAIN" -p tcp --dport "$PORT" --syn \
-    -j REJECT --reject-with tcp-reset
+    # ── ВТОРОЙ СЛОЙ — все остальные → hashlimit 54/мин ──────
+    iptables -t filter -A "$CHAIN" -p tcp --dport "$PORT" --syn \
+        -m hashlimit \
+        --hashlimit-name mtproto_"$PORT" \
+        --hashlimit-mode srcip \
+        --hashlimit-upto 54/minute \
+        --hashlimit-burst 1 \
+        --hashlimit-htable-expire 60000 \
+        --hashlimit-htable-size 32768 \
+        -j ACCEPT
 
-#обратно в INPUT
+    # ── REJECT для всех остальных ────────────────────────────
+    iptables -t filter -A "$CHAIN" -p tcp --dport "$PORT" --syn \
+        -j REJECT --reject-with tcp-reset
+done
+
+# обратно в INPUT
 iptables -t filter -A "$CHAIN" -j RETURN
 
 APPLY_SCRIPT_EOF
@@ -568,7 +568,6 @@ apply_basic_optimization() {
     if [ -n "$CONFIG_TELEMT" ] && [ -f "$CONFIG_TELEMT" ]; then
         systemctl stop telemt 2>/dev/null || true
 
-        # Настройка max_connections
         if grep -q '^max_connections *=.*' "$CONFIG_TELEMT"; then
             if ! grep -q '^max_connections *= *16384' "$CONFIG_TELEMT"; then
                 sed -i 's/^max_connections *= *.*/max_connections = 16384/' "$CONFIG_TELEMT"
@@ -577,7 +576,6 @@ apply_basic_optimization() {
             grep -q '\[server\]' "$CONFIG_TELEMT" && sed -i '/\[server\]/a max_connections = 16384' "$CONFIG_TELEMT"
         fi
 
-        # Настройка client_handshake
         if grep -q '^client_handshake *=.*' "$CONFIG_TELEMT"; then
             if ! grep -q '^client_handshake *= *15' "$CONFIG_TELEMT"; then
                 sed -i 's/^client_handshake *= *.*/client_handshake = 15/' "$CONFIG_TELEMT"
@@ -595,10 +593,8 @@ apply_basic_optimization() {
         log_info "Создан /etc/sysctl.conf"
     fi
 
-    # Создаем директорию для лимитов
     mkdir -p /etc/systemd/system/telemt.service.d
 
-    # Настраиваем лимиты для telemt
     if ! grep -q "LimitNOFILE=65535" /etc/systemd/system/telemt.service.d/limits.conf 2>/dev/null; then
         cat >/etc/systemd/system/telemt.service.d/limits.conf <<EOF
 [Service]
@@ -608,7 +604,6 @@ EOF
 
     systemctl daemon-reload
 
-    # Функция применения sysctl
     apply_sysctl() {
         cat >/etc/sysctl.d/99-custom.conf <<EOF
 net.ipv4.tcp_fastopen=3
@@ -626,7 +621,6 @@ EOF
         sysctl --system 2>/dev/null || log_info "sysctl --system выполнен без изменений"
     }
 
-    # ★★★★★ ВЫЗЫВАЕМ ФУНКЦИЮ ★★★★★
     apply_sysctl
 
     log_success "Базовая оптимизация выполнена"
@@ -654,14 +648,11 @@ remove_mekopr() {
 
     log_info "Начинаем полное удаление MEKOpr..."
 
-    # ── Удаляем SYN FIX (правила iptables) ──────────────────
     remove_syn_fix
 
-    # ── Удаляем файлы MEKOpr ────────────────────────────────
     log_info "Удаление файлов конфигурации..."
     rm -rf /opt/mtpr-simple
 
-    # ── Удаляем сам скрипт ──────────────────────────────────
     log_info "Удаление скрипта..."
     rm -f "$0"
 
@@ -682,12 +673,10 @@ is_telemt_installed() {
     command -v telemt >/dev/null 2>&1
 }
 
-# ── Функция проверки установки MTProtoZig ──────────────────
 is_mtprotozig_installed() {
     command -v mtbuddy >/dev/null 2>&1
 }
 
-# ── Функция получения версии Telemt ─────────────────────────
 get_telemt_version() {
     if command -v telemt >/dev/null 2>&1; then
         telemt --version 2>/dev/null | head -1 | awk '{print $2}'
@@ -696,7 +685,6 @@ get_telemt_version() {
     fi
 }
 
-# ── Функция получения онлайна Telemt ────────────────────────
 get_telemt_online() {
     if is_telemt_installed; then
         curl -s http://127.0.0.1:9091/v1/stats/users/active-ips 2>/dev/null | grep -o '"active_ips":\[[^]]*\]' | grep -o '[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}' | wc -l | tr -d ' '
@@ -705,7 +693,6 @@ get_telemt_online() {
     fi
 }
 
-# ── Функция получения онлайна MTProtoZig ────────────────────
 get_mtprotozig_online() {
     if is_mtprotozig_installed; then
         sudo journalctl -u mtproto-proxy -n 50 2>/dev/null | grep -o 'users_total=[0-9]*' | tail -1 | cut -d'=' -f2
@@ -714,7 +701,6 @@ get_mtprotozig_online() {
     fi
 }
 
-# ── Функция получения количества уникальных IP ─────────────
 get_online_count() {
     local port="443"
     if [ -n "$CONFIG_TELEMT" ] && [ -f "$CONFIG_TELEMT" ]; then
@@ -729,17 +715,15 @@ get_online_count() {
 show_header() {
     clear_screen
     echo ""
-    echo -e "  ${BOLD}MTProto Fixer by MEKO v1.08${NC}"
+    echo -e "  ${BOLD}MTProto Fixer by MEKO v1.10${NC}"
     echo -e "  ${DIM}===========================${NC}"
     echo ""
 
-    # Обновляем порт из конфига при каждом показе меню
     if [ -n "$CONFIG_TELEMT" ] && [ -f "$CONFIG_TELEMT" ] && pgrep -x telemt >/dev/null 2>&1; then
         local current_port=$(grep -E '^port[[:space:]]*=' "$CONFIG_TELEMT" | head -1 | awk -F'=' '{print $2}' | tr -d ' "')
         if [[ "$current_port" =~ ^[0-9]+$ ]]; then
             save_port "$current_port"
         else
-            # Если порт не определён, но Telemt работает — пробуем определить через ss
             local detected_port=$(ss -tlnp 2>/dev/null | grep telemt | grep -oP ':\K[0-9]+' | head -1)
             if [[ -n "$detected_port" ]]; then
                 save_port "$detected_port"
@@ -747,7 +731,6 @@ show_header() {
         fi
     fi
 
-    # Определяем статус SYN FIX (проверка статуса сервиса)
     local synfix_status=$(get_synfix_status)
     if [ "$synfix_status" = "active" ]; then
         echo -e "  ${BOLD}SYN FIX:${NC} ${GREEN}Установлен${NC}"
@@ -757,7 +740,6 @@ show_header() {
         echo -e "  ${BOLD}SYN FIX:${NC} ${RED}${BOLD}Не установлен${NC}"
     fi
 
-    # Проверяем установку Telemt и MTProtoZig
     local telemt_installed=false
     local mtprotozig_installed=false
     
@@ -768,7 +750,6 @@ show_header() {
         mtprotozig_installed=true
     fi
 
-    # Формируем статусную строку
     local status_line=""
     if [ "$telemt_installed" = true ] && [ "$mtprotozig_installed" = true ]; then
         status_line="Telemt: ${GREEN}установлен${NC}${BOLD} | Mtproto.zig: ${GREEN}установлен${NC}"
@@ -781,15 +762,12 @@ show_header() {
     fi
     echo -e "  ${BOLD}${status_line}${NC}"
 
-    # Если установлен Telemt - показываем детали
     if [ "$telemt_installed" = true ]; then
         local port_display=""
         local saved_port=$(get_saved_port)
         
-        # Сначала пытаемся получить порт из сохранённого файла
         if [ -n "$saved_port" ] && [[ "$saved_port" =~ ^[0-9]+$ ]]; then
             port_display=" (порт $saved_port)"
-        # Если нет — пытаемся получить из конфига
         elif [ -n "$CONFIG_TELEMT" ] && [ -f "$CONFIG_TELEMT" ]; then
             local port=$(grep -E '^port[[:space:]]*=' "$CONFIG_TELEMT" | head -1 | awk -F'=' '{print $2}' | tr -d ' "')
             if [[ "$port" =~ ^[0-9]+$ ]]; then
@@ -802,7 +780,6 @@ show_header() {
             port_display=" (порт не определён)"
         fi
 
-        # Получаем версию Telemt
         local telemt_version=$(get_telemt_version)
         local version_color=""
         if [ -n "$telemt_version" ]; then
@@ -818,14 +795,12 @@ show_header() {
             version_display="${RED}не определена${NC}"
         fi
 
-        # Получаем количество уникальных IP
         local online_count=$(get_telemt_online)
 
         echo -e "  ${BOLD}Telemt:${NC} ${GREEN}Установлен${NC}${port_display}"
         echo -e "  ${BOLD}Версия Telemt:${NC} $version_display"
         echo -e "  ${BOLD}Подключено к прокси Telemt:${NC} ${CYAN}$online_count${NC} человек"
 
-        # Статус MSS и synlimit
         local mss_status=""
         local synlimit_status=""
         if is_mss_enabled; then
@@ -841,7 +816,6 @@ show_header() {
         echo -e "  ${BOLD}Встроенный MSS:${NC} $mss_status  |  ${BOLD}Встроенный synlimit:${NC} $synlimit_status"
     fi
 
-    # Если установлен MTProtoZig - показываем онлайн
     if [ "$mtprotozig_installed" = true ]; then
         local online_count=$(get_mtprotozig_online)
         if [ -n "$online_count" ] && [ "$online_count" -ge 0 ] 2>/dev/null; then
@@ -854,7 +828,6 @@ show_header() {
     echo ""
 }
 
-# ── Функция для открытия подменю прокси ─────────────────────
 open_proxy_menu() {
     local PROXY_MENU_SCRIPT="/opt/mtpr-simple/proxys/proxymenu.sh"
     if [ -f "$PROXY_MENU_SCRIPT" ]; then
@@ -868,7 +841,6 @@ open_proxy_menu() {
 
 # ── Главное меню ─────────────────────────────────────────────
 main_menu() {
-    # Проверяем аргумент -auto_install
     local auto_install=false
     if [[ "$1" == "-auto_install" ]]; then
         auto_install=true
@@ -880,7 +852,6 @@ main_menu() {
     fi
 
     while true; do
-        # Проверка наличия файла iptables с нашими правилами
         local show_iptables_rules=false
         if [ -f /etc/iptables/rules.v4 ]; then
             if grep -q "MTPR_SYNFIX" /etc/iptables/rules.v4 2>/dev/null; then
@@ -900,7 +871,6 @@ main_menu() {
             local item1="${RED}${BOLD}Удалить SYN FIX${NC}"
         fi
 
-        # Проверяем статус для пункта 2
         if are_bad_options_enabled; then
             local item2="${CYAN}Отключить встроенные MSS и synlimit${NC}"
         else
@@ -1008,7 +978,6 @@ update_script() {
     local temp="/tmp/$(basename "$0").new.$$"
     local saved_port=""
 
-    # ── Запоминаем текущий порт
     if [ -f "$PORT_FILE" ] && [ -s "$PORT_FILE" ]; then
         saved_port=$(cat "$PORT_FILE")
     fi
@@ -1018,8 +987,6 @@ update_script() {
 
     echo ""
     echo -e "  ${YELLOW}[!]${NC} Удаляем текущую версию..."
-
-    # ── Удаляем старые файлы, но сохраняем порт ──────────────
     remove_syn_fix
     rm -f "$0"
 
@@ -1028,7 +995,6 @@ update_script() {
     if curl -fsSL "$url" -o "$temp"; then
         chmod +x "$temp"
 
-        # ── Скачиваем также все файлы из папки proxys ──────────
         echo -e "  ${GREEN}[✓]${NC} Скачиваем файлы прокси-меню..."
         local proxy_files=("proxys/proxymenu.sh" "proxys/telemt1.sh" "proxys/mtprotozig1.sh")
         mkdir -p /opt/mtpr-simple/proxys
