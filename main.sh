@@ -31,7 +31,7 @@ check_root
 # ── Файл для сохранения пути к конфигу ──────────────────────
 CONFIG_PATH_FILE="/opt/mtpr-simple/config_path"
 
-# ── Функции для работы с TOML (из реаниматора) ──────────────
+# ── Функции для работы с TOML ──────────────
 _toml_get_value() {
     local _key="$1" _file="$2"
     [ -f "$_file" ] || return 0
@@ -78,7 +78,7 @@ get_telemt_version() {
     fi
 }
 
-# ── Расширенное обнаружение Telemt (из реаниматора) ──────────
+# ── Расширенное обнаружение Telemt ──────────
 detect_telemt_advanced() {
     local DETECTED_CONFIG_PATH=""
     local DETECTED_PORT=""
@@ -852,7 +852,7 @@ get_online_count() {
 show_header() {
     clear_screen
     echo ""
-    echo -e "  ${BOLD}MTProto Fixer by MEKO v1.17${NC}"
+    echo -e "  ${BOLD}MTProto Fixer by MEKO v1.18${NC}"
     echo -e "  ${DIM}===========================${NC}"
     echo ""
 
