@@ -958,7 +958,7 @@ get_online_count() {
 show_header() {
     clear_screen
     echo ""
-    echo -e "  ${BOLD}MTProto Fixer by MEKO v1.28${NC}"
+    echo -e "  ${BOLD}MTProto Fixer by MEKO v1.29${NC}"
     echo -e "  ${DIM}===========================${NC}"
     echo ""
 
@@ -1197,8 +1197,8 @@ main_menu() {
 
         echo -e "  ${CYAN}[1]${NC}  $item1"
         echo -e "  ${CYAN}[2]${NC}  $item3_text"
-        echo -e "  ${CYAN}[3]${NC}  ${NC}${BOLD}Меню работы с прокси с кфг${NC}"
-        echo -e "  ${CYAN}[4]${NC}  ${NC}${BOLD}Обновить скрипт до последней версии${NC}"
+        echo -e "  ${CYAN}[3]${NC}  ${NC}${BOLD}Меню прокси и конфигов - установка, обновление, настройка, удаление${NC}"
+        echo -e "  ${CYAN}[4]${NC}  ${NC}${BOLD}Проверить наличие обновлений и обновить скрипт${NC}"
         echo -e "  ${CYAN}[5]${NC}  $item2"
         echo -e "  ${CYAN}[6]${NC}  ${NC}${BOLD}Проверить ограничения на сервере${NC}"
         echo -e "  ${CYAN}[7]${NC}  ${RED}${BOLD}Полное удаление MEKOpr${NC}"
