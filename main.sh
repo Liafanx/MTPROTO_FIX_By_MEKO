@@ -958,7 +958,7 @@ get_online_count() {
 show_header() {
     clear_screen
     echo ""
-    echo -e "  ${BOLD}MTProto Fixer by MEKO v1.24${NC}"
+    echo -e "  ${BOLD}MTProto Fixer by MEKO v1.25${NC}"
     echo -e "  ${DIM}===========================${NC}"
     echo ""
 
@@ -1169,16 +1169,16 @@ main_menu() {
         if are_bad_options_enabled; then
             local item2="${NC}${BOLD}Отключить mss, mss_bulk и synlimit в cfg telemt${NC}"
         else
-            local item2="${NC}${BOLD}Включить mss и mss_bulk в конфиге telemt${NC}"
+            local item2="${NC}${BOLD}Включить mss и mss_bulk в конфиге telemt${RED} (не рекомендуется)"
         fi
 
         echo -e "  ${CYAN}[1]${NC}  $item1"
-        echo -e "  ${CYAN}[2]${NC}  $item2"
-        echo -e "  ${CYAN}[3]${NC}  ${GREEN}${BOLD}Выполнить базовую оптимизацию${NC}"
-        echo -e "  ${CYAN}[4]${NC}  ${RED}${BOLD}Полное удаление MEKOpr${NC}"
-        echo -e "  ${CYAN}[5]${NC}  ${NC}${BOLD}Проверить наличие обновлений и обновить скрипт${NC}"
+        echo -e "  ${CYAN}[2]${NC}  ${GREEN}${BOLD}Выполнить базовую оптимизацию${NC}"
+        echo -e "  ${CYAN}[3]${NC}  ${NC}${BOLD}Меню прокси и конфигов - установка, обновление, настройка, удаление${NC}"
+        echo -e "  ${CYAN}[4]${NC}  ${NC}${BOLD}Проверить наличие обновлений и обновить скрипт${NC}"
+        echo -e "  ${CYAN}[5]${NC}  $item2"
         echo -e "  ${CYAN}[6]${NC}  ${NC}${BOLD}Проверить ограничения на сервере${NC}"
-        echo -e "  ${CYAN}[7]${NC}  ${NC}${BOLD}Меню прокси и конфигов - установка, обновление, настройка, удаление${NC}"
+        echo -e "  ${CYAN}[7]${NC}  ${RED}${BOLD}Полное удаление MEKOpr${NC}"
         
         if [ "$show_iptables_rules" = true ]; then
             echo -e "  ${RED}[8]${NC}  Удалить правила iptables-persistent"
@@ -1225,28 +1225,28 @@ main_menu() {
             ;;
         2)
             echo ""
-            apply_optimization
-            echo ""
-            read -rsn1 -p "  Нажмите любую клавишу для возврата в меню..."
-            ;;
-        3)
-            echo ""
             apply_basic_optimization
             echo ""
             read -rsn1 -p "  Нажмите любую клавишу для возврата в меню..."
             ;;
+        3)
+            open_proxy_menu
+            ;;
         4)
-            remove_mekopr
+            echo ""
+            update_script
             ;;
         5)
             echo ""
-            update_script
+            apply_optimization
+            echo ""
+            read -rsn1 -p "  Нажмите любую клавишу для возврата в меню..."
             ;;
         6)
             check_censor
             ;;
         7)
-            open_proxy_menu
+            remove_mekopr
             ;;
         8)
             echo ""
