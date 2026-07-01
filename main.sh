@@ -958,7 +958,7 @@ get_online_count() {
 show_header() {
     clear_screen
     echo ""
-    echo -e "  ${BOLD}MTProto Fixer by MEKO v1.22${NC}"
+    echo -e "  ${BOLD}MTProto Fixer by MEKO v1.24${NC}"
     echo -e "  ${DIM}===========================${NC}"
     echo ""
 
@@ -1123,6 +1123,17 @@ open_proxy_menu() {
     fi
 }
 
+# ── Функция проверки ограничений сервера ──────────────────
+check_censor() {
+    echo ""
+    log_info "Проверка ограничений на сервере..."
+    echo ""
+    wget -qO- censorcheck.tlab.pw | bash
+    echo ""
+    echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
+    read -rsn1
+}
+
 # ── Главное меню ─────────────────────────────────────────────
 main_menu() {
     local auto_install=false
@@ -1166,10 +1177,11 @@ main_menu() {
         echo -e "  ${CYAN}[3]${NC}  ${GREEN}${BOLD}Выполнить базовую оптимизацию${NC}"
         echo -e "  ${CYAN}[4]${NC}  ${RED}${BOLD}Полное удаление MEKOpr${NC}"
         echo -e "  ${CYAN}[5]${NC}  ${NC}${BOLD}Проверить наличие обновлений и обновить скрипт${NC}"
-        echo -e "  ${CYAN}[6]${NC}  ${NC}${BOLD}Меню прокси и конфигов - установка, обновление, настройка, удаление${NC}"
+        echo -e "  ${CYAN}[6]${NC}  ${NC}${BOLD}Проверить ограничения на сервере${NC}"
+        echo -e "  ${CYAN}[7]${NC}  ${NC}${BOLD}Меню прокси и конфигов - установка, обновление, настройка, удаление${NC}"
         
         if [ "$show_iptables_rules" = true ]; then
-            echo -e "  ${RED}[7]${NC}  Удалить правила iptables-persistent"
+            echo -e "  ${RED}[8]${NC}  Удалить правила iptables-persistent"
         fi
         
         echo -e "  ${CYAN}[0]${NC}  Выход"
@@ -1231,9 +1243,12 @@ main_menu() {
             update_script
             ;;
         6)
-            open_proxy_menu
+            check_censor
             ;;
         7)
+            open_proxy_menu
+            ;;
+        8)
             echo ""
             remove_iptables_rules
             echo ""
