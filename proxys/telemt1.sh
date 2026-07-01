@@ -232,6 +232,200 @@ generate_proxy_links() {
     echo -e "$links"
 }
 
+# ── Функция получения списка пользователей из конфига ──────
+get_users_list() {
+    local config_path=$(get_config_path)
+    if [ ! -f "$config_path" ]; then
+        return 1
+    fi
+    
+    # Получаем все строки из секции [access.users]
+    sed -n '/^\[access\.users\]/,/^\[/p' "$config_path" 2>/dev/null | grep -E '=' | grep -v '^#' | while IFS='=' read -r name secret; do
+        name=$(echo "$name" | tr -d ' "')
+        secret=$(echo "$secret" | tr -d ' "')
+        if [ -n "$name" ] && [ -n "$secret" ]; then
+            echo "$name:$secret"
+        fi
+    done
+}
+
+# ── Функция поиска пользователя и вывода ссылки ─────────────
+find_user_link() {
+    echo ""
+    echo -e "  ${BOLD}Поиск пользователя для генерации ссылки${NC}"
+    echo -e "  ${DIM}Введите имя пользователя (или его часть)${NC}"
+    echo -e "  ${DIM}Например: hello, user1, test и т.д.${NC}"
+    echo ""
+    echo -en "  ${BOLD}Ввод:${NC} "
+    read -r search_query
+    
+    if [ -z "$search_query" ]; then
+        echo ""
+        echo -e "  ${YELLOW}[!]${NC} Введите имя пользователя"
+        echo ""
+        echo -e "  ${GRAY}Нажмите любую клавишу для возврата...${NC}"
+        read -rsn1
+        return 1
+    fi
+    
+    # Получаем список пользователей
+    local users=$(get_users_list)
+    if [ -z "$users" ]; then
+        echo ""
+        echo -e "  ${YELLOW}[!]${NC} В конфиге нет пользователей в секции [access.users]"
+        echo ""
+        echo -e "  ${GRAY}Нажмите любую клавишу для возврата...${NC}"
+        read -rsn1
+        return 1
+    fi
+    
+    # Ищем совпадения (регистронезависимо)
+    local matches=$(echo "$users" | grep -i "$search_query")
+    
+    if [ -z "$matches" ]; then
+        echo ""
+        echo -e "  ${YELLOW}[!]${NC} Пользователь с именем \"$search_query\" не найден"
+        echo ""
+        echo -e "  ${GRAY}Нажмите любую клавишу для возврата...${NC}"
+        read -rsn1
+        return 1
+    fi
+    
+    # Проверяем сколько совпадений
+    local match_count=$(echo "$matches" | wc -l)
+    
+    if [ "$match_count" -gt 1 ]; then
+        echo ""
+        echo -e "  ${YELLOW}[!]${NC} Найдено несколько совпадений:"
+        echo ""
+        echo "$matches" | while IFS=':' read -r name secret; do
+            echo -e "    ${CYAN}${name}${NC}"
+        done
+        echo ""
+        echo -e "  ${BOLD}Уточните запрос для выбора конкретного пользователя${NC}"
+        echo ""
+        echo -e "  ${GRAY}Нажмите любую клавишу для возврата...${NC}"
+        read -rsn1
+        return 1
+    fi
+    
+    # Одно совпадение — показываем ссылку
+    local user_name=$(echo "$matches" | cut -d':' -f1)
+    local user_secret=$(echo "$matches" | cut -d':' -f2)
+    
+    echo ""
+    echo -e "  ${GREEN}✓${NC} Найден пользователь: ${BOLD}${user_name}${NC}"
+    echo ""
+    echo -en "  ${BOLD}Вывести ссылку для этого пользователя? [Enter/Y - да, N - нет]:${NC} "
+    local confirm
+    read -r confirm
+    
+    if [[ -n "$confirm" && "$confirm" =~ ^[nN]$ ]]; then
+        echo ""
+        echo -e "  ${GRAY}Возврат...${NC}"
+        sleep 0.5
+        return 0
+    fi
+    
+    # Получаем параметры для ссылки
+    local detected_info=$(detect_telemt_advanced)
+    local IFS=':'
+    local parts=($detected_info)
+    unset IFS
+    
+    local detected_port="${parts[1]}"
+    local detected_ip="${parts[2]}"
+    local detected_public_host="${parts[3]}"
+    local detected_classic="${parts[4]}"
+    local detected_secure="${parts[5]}"
+    local detected_tls="${parts[6]}"
+    local detected_tls_domain="${parts[7]}"
+    
+    # Определяем порт
+    local port=""
+    if [ -n "$detected_port" ]; then
+        port="$detected_port"
+    else
+        port=$(grep -E '^port[[:space:]]*=' "$config_path" 2>/dev/null | head -1 | awk -F'=' '{print $2}' | tr -d ' "')
+    fi
+    if [ -z "$port" ]; then
+        port="443"
+    fi
+    
+    # Определяем сервер
+    local server=""
+    if [ -n "$detected_public_host" ]; then
+        server="$detected_public_host"
+    elif [ -n "$detected_ip" ]; then
+        server="$detected_ip"
+    else
+        server=$(get_public_ip)
+    fi
+    if [ -z "$server" ]; then
+        server=$(curl -4 -fsS --max-time 3 https://api.ipify.org 2>/dev/null)
+    fi
+    if [ -z "$server" ]; then
+        server="SERVER_IP"
+    fi
+    
+    # Определяем режимы
+    local classic_enabled=false
+    local secure_enabled=false
+    local tls_enabled=false
+    
+    if [ "$detected_classic" = "true" ]; then
+        classic_enabled=true
+    fi
+    if [ "$detected_secure" = "true" ]; then
+        secure_enabled=true
+    fi
+    if [ "$detected_tls" = "true" ]; then
+        tls_enabled=true
+    fi
+    
+    if [ "$classic_enabled" = false ] && [ "$secure_enabled" = false ] && [ "$tls_enabled" = false ]; then
+        if [ -n "$detected_tls_domain" ]; then
+            tls_enabled=true
+        else
+            classic_enabled=true
+        fi
+    fi
+    
+    echo ""
+    echo -e "  ${BOLD}Ссылка для пользователя ${GREEN}${user_name}${NC}${BOLD}:${NC}"
+    echo ""
+    
+    # TLS режим
+    if [ "$tls_enabled" = true ]; then
+        local hex_domain=""
+        if [ -n "$detected_tls_domain" ]; then
+            hex_domain=$(echo -n "$detected_tls_domain" | xxd -p -c 256 2>/dev/null)
+        fi
+        local tls_secret="ee${user_secret}${hex_domain}"
+        echo -e "  ${BOLD}TLS:${NC}"
+        echo -e "  ${CYAN}tg://proxy?server=${server}&port=${port}&secret=${tls_secret}${NC}"
+        echo ""
+    fi
+    
+    # Secure режим
+    if [ "$secure_enabled" = true ]; then
+        local secure_secret="dd${user_secret}"
+        echo -e "  ${BOLD}Secure (DD):${NC}"
+        echo -e "  ${CYAN}tg://proxy?server=${server}&port=${port}&secret=${secure_secret}${NC}"
+        echo ""
+    fi
+    
+    # Classic режим
+    if [ "$classic_enabled" = true ]; then
+        echo -e "  ${BOLD}Classic:${NC}"
+        echo -e "  ${CYAN}tg://proxy?server=${server}&port=${port}&secret=${user_secret}${NC}"
+        echo ""
+    fi
+    
+    echo -e "  ${GRAY}Нажмите любую клавишу для возврата...${NC}"
+    read -rsn1
+}
+
 # ── Функция проверки, установлен ли Telemt ──────────────────
 is_telemt_installed() {
     if command -v telemt >/dev/null 2>&1; then
@@ -502,7 +696,7 @@ restart_telemt() {
 while true; do
     clear
     echo ""
-    echo -e "  ${BOLD}Telemt меню v0.53${NC}"
+    echo -e "  ${BOLD}Telemt меню v0.54${NC}"
     echo -e "  ${DIM}===========================${NC}"
     
     # Показываем информацию о Telemt, если установлен
@@ -527,14 +721,6 @@ while true; do
             fi
         fi
         
-        # ── ГЕНЕРИРУЕМ ССЫЛКИ ──────────────────────────────────
-        links=$(generate_proxy_links)
-        if [ -n "$links" ]; then
-            echo ""
-            echo -e "  ${BOLD}Ссылки для подключения:${NC}"
-            echo -e "$links"
-        fi
-        
         # Онлайн
         online=$(get_telemt_online)
         if [ -n "$online" ] && [ "$online" -ge 0 ] 2>/dev/null; then
@@ -551,7 +737,8 @@ while true; do
     echo -e "  ${CYAN}[3]${NC}  ${BOLD}Перезапустить Telemt${NC}"
     echo -e "  ${CYAN}[4]${NC}  ${BOLD}Обновить путь к конфигу Telemt${NC}"
     echo -e "  ${CYAN}[5]${NC}  ${BOLD}Посмотреть логи Telemt${NC}"
-    echo -e "  ${RED}[6]${NC}  ${BOLD}Удалить Telemt${NC}"
+    echo -e "  ${CYAN}[6]${NC}  ${BOLD}Найти пользователя и показать ссылку${NC}"
+    echo -e "  ${RED}[7]${NC}  ${BOLD}Удалить Telemt${NC}"
     echo -e "  ${CYAN}[0]${NC}  ${BOLD}Назад в прокси меню${NC}"
     echo ""
     
@@ -584,6 +771,9 @@ while true; do
             view_logs
             ;;
         6)
+            find_user_link
+            ;;
+        7)
             purge_telemt
             ;;
         0)
