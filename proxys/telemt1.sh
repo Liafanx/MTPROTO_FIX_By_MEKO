@@ -15,6 +15,85 @@ NC='\033[0m'
 # ── Файл для сохранения пути к конфигу (используем общий с main.sh) ──
 CONFIG_PATH_FILE="/opt/mtpr-simple/config_path"
 
+# ── Функции для работы с TOML ──────────────────────────────
+_toml_get_value() {
+    local _key="$1" _file="$2"
+    [ -f "$_file" ] || return 0
+    awk -v k="$_key" '
+        /^[[:space:]]*#/ { next }
+        $1 == k && $2 == "=" { gsub(/[^0-9]/, "", $3); print $3; exit }
+    ' "$_file" 2>/dev/null
+}
+
+_is_excluded_path() {
+    local _path="$1"
+    case "$_path" in
+        *telemt-panel*|*telemt_panel*) return 0 ;;
+    esac
+    return 1
+}
+
+_looks_like_telemt_config() {
+    local _file="$1"
+    [ -f "$_file" ] || return 1
+    grep -qE '^\[access\.users\]|^\[censorship\]|^\[general\.modes\]|^tls_domain[[:space:]]*=' "$_file" 2>/dev/null
+}
+
+# ── Расширенное обнаружение Telemt (из реаниматора) ──────────
+detect_telemt_advanced() {
+    local DETECTED_CONFIG_PATH=""
+    local DETECTED_PORT=""
+    local DETECTED_IP=""
+    local DETECTED_PUBLIC_HOST=""
+    
+    # 1. Локальный процесс telemt
+    if pgrep -x telemt &>/dev/null || systemctl is-active telemt.service &>/dev/null 2>&1; then
+        local _args
+        _args=$(ps -eo args 2>/dev/null | grep '[t]elemt' | grep -v 'telemt-panel' | grep -v 'telemt_panel' | head -1 | grep -oE '/[^ ]+\.toml' | head -1)
+        if [ -n "$_args" ] && [ -f "$_args" ] && ! _is_excluded_path "$_args" && _looks_like_telemt_config "$_args"; then
+            DETECTED_CONFIG_PATH="$_args"
+        fi
+    fi
+    
+    # 2. Поиск конфига в стандартных местах
+    if [ -z "$DETECTED_CONFIG_PATH" ]; then
+        local _cf
+        for _cf in /etc/telemt/telemt.toml /etc/telemt/config.toml /etc/telemt.toml /opt/telemt/config.toml /opt/telemt/telemt.toml; do
+            if [ -f "$_cf" ] && ! _is_excluded_path "$_cf" && _looks_like_telemt_config "$_cf"; then
+                DETECTED_CONFIG_PATH="$_cf"
+                break
+            fi
+        done
+    fi
+    
+    # 3. Проверяем сохранённый путь
+    if [ -z "$DETECTED_CONFIG_PATH" ] && [ -f "$CONFIG_PATH_FILE" ] && [ -s "$CONFIG_PATH_FILE" ]; then
+        local _saved_path=$(cat "$CONFIG_PATH_FILE")
+        if [ "$_saved_path" != "skip" ] && [ -f "$_saved_path" ] && _looks_like_telemt_config "$_saved_path"; then
+            DETECTED_CONFIG_PATH="$_saved_path"
+        fi
+    fi
+    
+    # 4. Получаем порт, ip и public_host из конфига
+    if [ -n "$DETECTED_CONFIG_PATH" ] && [ -f "$DETECTED_CONFIG_PATH" ]; then
+        DETECTED_PORT=$(_toml_get_value "port" "$DETECTED_CONFIG_PATH")
+        DETECTED_IP=$(grep -E '^ip[[:space:]]*=' "$DETECTED_CONFIG_PATH" 2>/dev/null | head -1 | awk -F'=' '{print $2}' | tr -d ' "')
+        DETECTED_PUBLIC_HOST=$(grep -E '^public_host[[:space:]]*=' "$DETECTED_CONFIG_PATH" 2>/dev/null | head -1 | awk -F'=' '{print $2}' | tr -d ' "')
+    fi
+    
+    echo "$DETECTED_CONFIG_PATH:$DETECTED_PORT:$DETECTED_IP:$DETECTED_PUBLIC_HOST"
+}
+
+# ── Функция получения публичного IP ──────────────────────────
+get_public_ip() {
+    local _ip=""
+    _ip=$(curl -4 -fsS --max-time 5 https://api.ipify.org 2>/dev/null) ||
+    _ip=$(curl -4 -fsS --max-time 5 https://ifconfig.me 2>/dev/null) ||
+    _ip=$(curl -4 -fsS --max-time 5 https://icanhazip.com 2>/dev/null) ||
+    _ip=""
+    echo "$_ip"
+}
+
 # ── Функция получения текущего пути к конфигу ──────────────
 get_config_path() {
     if [ -f "$CONFIG_PATH_FILE" ] && [ -s "$CONFIG_PATH_FILE" ]; then
@@ -58,7 +137,6 @@ get_telemt_ports() {
         echo ""
         return 1
     fi
-    # Ищем все строки с port = и вытаскиваем значения
     grep -E '^port[[:space:]]*=' "$config_path" 2>/dev/null | awk -F'=' '{print $2}' | tr -d ' "'
 }
 
@@ -69,6 +147,86 @@ get_telemt_online() {
     else
         echo ""
     fi
+}
+
+# ── Функция формирования ссылки для подключения ─────────────
+generate_proxy_link() {
+    local config_path=$(get_config_path)
+    if [ ! -f "$config_path" ]; then
+        echo ""
+        return 1
+    fi
+    
+    # Получаем данные из конфига через расширенное обнаружение
+    local detected_info=$(detect_telemt_advanced)
+    local detected_path="${detected_info%%:*}"
+    local remaining="${detected_info#*:}"
+    local detected_port="${remaining%%:*}"
+    remaining="${remaining#*:}"
+    local detected_ip="${remaining%%:*}"
+    local detected_public_host="${remaining#*:}"
+    
+    # Определяем порт
+    local port=""
+    if [ -n "$detected_port" ]; then
+        port="$detected_port"
+    else
+        port=$(get_telemt_ports | head -1)
+    fi
+    if [ -z "$port" ]; then
+        port="443"
+    fi
+    
+    # Определяем сервер (IP или public_host)
+    local server=""
+    if [ -n "$detected_public_host" ]; then
+        server="$detected_public_host"
+    elif [ -n "$detected_ip" ]; then
+        server="$detected_ip"
+    else
+        server=$(get_public_ip)
+    fi
+    if [ -z "$server" ]; then
+        server=$(curl -4 -fsS --max-time 3 https://api.ipify.org 2>/dev/null)
+    fi
+    if [ -z "$server" ]; then
+        server="SERVER_IP"
+    fi
+    
+    # Получаем secret (первый пользователь из access.users)
+    local secret=""
+    if [ -f "$config_path" ]; then
+        secret=$(grep -E '^[[:space:]]*[^#]*[[:space:]]*=' "$config_path" 2>/dev/null | grep -v '^#' | head -1 | awk -F'=' '{print $2}' | tr -d ' "')
+    fi
+    
+    # Получаем tls_domain
+    local tls_domain=""
+    if [ -f "$config_path" ]; then
+        tls_domain=$(grep -E '^tls_domain[[:space:]]*=' "$config_path" 2>/dev/null | head -1 | awk -F'=' '{print $2}' | tr -d ' "')
+    fi
+    
+    # Формируем secret с tls_domain если он есть
+    local final_secret=""
+    if [ -n "$secret" ]; then
+        if [ -n "$tls_domain" ]; then
+            # Конвертируем tls_domain в hex
+            local hex_domain=$(echo -n "$tls_domain" | xxd -p -c 256 2>/dev/null)
+            if [ -n "$hex_domain" ]; then
+                final_secret="${secret}${hex_domain}"
+            else
+                final_secret="$secret"
+            fi
+        else
+            final_secret="$secret"
+        fi
+    fi
+    
+    if [ -z "$final_secret" ]; then
+        echo ""
+        return 1
+    fi
+    
+    echo "tg://proxy?server=${server}&port=${port}&secret=${final_secret}"
 }
 
 # ── Функция обновления пути к конфигу ──────────────────────
@@ -89,7 +247,6 @@ update_config_path() {
         CONFIG_TELEMT_INPUT="$default_path"
     fi
 
-    # ── Проверяем, что указанный файл конфига действительно существует ──
     if [ ! -f "$CONFIG_TELEMT_INPUT" ]; then
         echo -e "  ${YELLOW}[!]${NC} Файл $CONFIG_TELEMT_INPUT не найден."
         echo -en "  ${BOLD}Сохранить этот путь всё равно? [y/N]:${NC} "
@@ -102,7 +259,6 @@ update_config_path() {
         fi
     fi
 
-    # ── Сохраняем путь ──────────────────────────────────────
     mkdir -p /opt/mtpr-simple
     echo "$CONFIG_TELEMT_INPUT" > "$CONFIG_PATH_FILE"
     echo -e "  ${GREEN}[✓]${NC} Путь сохранён: $CONFIG_TELEMT_INPUT"
@@ -151,7 +307,6 @@ install_telemt() {
     local display_version="последнюю"
     
     if [ -n "$version_input" ]; then
-        # Проверяем, что введена корректная версия (цифры и точки)
         if [[ "$version_input" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             install_version="$version_input"
             display_version="$version_input"
@@ -233,7 +388,6 @@ purge_telemt() {
 edit_config() {
     config_path=$(get_config_path)
     
-    # Проверяем, существует ли файл
     if [ ! -f "$config_path" ]; then
         echo ""
         echo -e "  ${YELLOW}[!]${NC} Файл конфига не найден по пути: $config_path"
@@ -247,7 +401,6 @@ edit_config() {
     echo ""
     echo -e "  ${BLUE}[i]${NC} Открытие конфига: $config_path"
     
-    # Проверяем, доступен ли редактор
     if command -v nano >/dev/null 2>&1; then
         echo -e "  ${GRAY}После редактирования сохраните файл (Ctrl+O) и закройте (Ctrl+X)${NC}"
         echo ""
@@ -304,7 +457,7 @@ restart_telemt() {
 while true; do
     clear
     echo ""
-    echo -e "  ${BOLD}Telemt меню v0.45${NC}"
+    echo -e "  ${BOLD}Telemt меню v0.46${NC}"
     echo -e "  ${DIM}===========================${NC}"
     
     # Показываем информацию о Telemt, если установлен
@@ -321,7 +474,6 @@ while true; do
         # Порт(ы)
         ports=$(get_telemt_ports)
         if [ -n "$ports" ]; then
-            # Проверяем, один порт или несколько
             port_count=$(echo "$ports" | wc -l)
             if [ "$port_count" -eq 1 ]; then
                 echo -e "  ${BOLD}Порт:${NC} ${CYAN}${ports}${NC}"
@@ -337,6 +489,15 @@ while true; do
         else
             echo -e "  ${NC}${BOLD}Подключено к прокси:${NC} ${CYAN}${BOLD}0${NC}${BOLD} человек"
         fi
+        
+        # ── ГЕНЕРИРУЕМ ССЫЛКУ ────────────────────────────────
+        proxy_link=$(generate_proxy_link)
+        if [ -n "$proxy_link" ]; then
+            echo ""
+            echo -e "  ${BOLD}Ссылка для подключения:${NC}"
+            echo -e "  ${CYAN}${proxy_link}${NC}"
+        fi
+        
         echo ""
     fi
     
@@ -349,12 +510,10 @@ while true; do
     echo -e "  ${CYAN}[0]${NC}  ${BOLD}Назад в прокси меню${NC}"
     echo ""
     
-    # Если Telemt не установлен, показываем это
     if ! is_telemt_installed; then
         echo -e "  ${YELLOW}Telemt не установлен${NC}"
         echo ""
     else
-        # Показываем текущий путь к конфигу
         current_path=$(get_config_path)
         echo -e "  ${DIM}Текущий путь к конфигу: ${current_path}${NC}"
         echo ""
