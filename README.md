@@ -27,9 +27,12 @@
 
 ---
 
+<div align="center">
+👇 Проблема? Пиши в чат - подскажем 👇
+</div>
 <p align="center">
   <a href="https://t.me/meko_mtprotofix">
-    <img src="https://github.com/user-attachments/assets/4a2a1ee5-cd30-4714-9a8b-0d02dc8cae1d" width="250" height="80"/>
+    <img src="https://github.com/user-attachments/assets/4a2a1ee5-cd30-4714-9a8b-0d02dc8cae1d" width="350" height="130"/>
   </a>
 </p>
 
