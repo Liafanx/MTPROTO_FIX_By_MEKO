@@ -1,7 +1,9 @@
 #!/bin/bash
 
-# PQC Check Scrip
-
+# =============================================
+# PQC Check Script для Ubuntu 24
+# Проверка поддержки X25519MLKEM768
+# =============================================
 
 set -e
 
@@ -38,33 +40,66 @@ print_warning() {
 
 # ── Проверка зависимостей ──────────────────────────────────
 check_dependencies() {
-    print_header "ПРОВЕРКА ЗАВИСИМОСТЕЙ V5"
-
+    print_header "ПРОВЕРКА ЗАВИСИМОСТЕЙ v0.6"
     
-    # Устанавливаем build-essential если нет
+    # Проверяем наличие build-essential
     if ! command -v cc &> /dev/null; then
-        print_info "Устанавливаю build-essential..."
-        apt install -y build-essential
-        print_success "build-essential установлен"
-    else
-        print_success "build-essential уже установлен"
-    fi
-    
-    local missing=()
-    for cmd in openssl curl nslookup; do
-        if ! command -v $cmd &> /dev/null; then
-            missing+=($cmd)
+        echo ""
+        print_info "Для работы необходимо установить следующие компоненты:"
+        echo ""
+        echo -e "  ${BOLD}• build-essential${NC} — компилятор C/C++"
+        echo -e "  ${BOLD}• openssl${NC} — для TLS-подключений"
+        echo -e "  ${BOLD}• curl${NC} — для HTTP-запросов"
+        echo -e "  ${BOLD}• dnsutils${NC} — для nslookup"
+        echo ""
+        echo -en "  ${BOLD}Установить зависимости?${NC} ${GREEN}[Enter/Y - да, N - нет]:${NC} "
+        read -r deps_confirm
+        
+        if [[ -n "$deps_confirm" && "$deps_confirm" =~ ^[nN]$ ]]; then
+            echo ""
+            print_info "Возврат в главное меню..."
+            sleep 0.5
+            return 1
         fi
-    done
-    
-    if [ ${#missing[@]} -ne 0 ]; then
-        print_warning "Отсутствуют: ${missing[*]}"
-        print_info "Устанавливаю необходимые пакеты..."
-        apt install -y openssl curl dnsutils
+        
+        print_info "Устанавливаю build-essential..."
+        apt update -qq 2>/dev/null || true
+        apt install -y build-essential openssl curl dnsutils
         print_success "Зависимости установлены"
     else
-        print_success "Все зависимости установлены"
+        local missing=()
+        for cmd in openssl curl nslookup; do
+            if ! command -v $cmd &> /dev/null; then
+                missing+=($cmd)
+            fi
+        done
+        
+        if [ ${#missing[@]} -ne 0 ]; then
+            echo ""
+            print_info "Для работы необходимо установить следующие компоненты:"
+            echo ""
+            echo -e "  ${BOLD}• ${missing[*]}${NC}"
+            echo ""
+            echo -en "  ${BOLD}Установить зависимости?${NC} ${GREEN}[Enter/Y - да, N - нет]:${NC} "
+            read -r deps_confirm
+            
+            if [[ -n "$deps_confirm" && "$deps_confirm" =~ ^[nN]$ ]]; then
+                echo ""
+                print_info "Возврат в главное меню..."
+                sleep 0.5
+                return 1
+            fi
+            
+            print_info "Устанавливаю необходимые пакеты..."
+            apt update -qq 2>/dev/null || true
+            apt install -y "${missing[@]}"
+            print_success "Зависимости установлены"
+        else
+            print_success "Все зависимости уже установлены"
+        fi
     fi
+    
+    return 0
 }
 
 # ── Проверка наличия Rust и pqfetch ────────────────────────
@@ -147,80 +182,94 @@ install_pqfetch() {
     return 0
 }
 
+# ── Получение IP-адресов ────────────────────────────────────
+resolve_ip() {
+    local host="$1"
+    nslookup "$host" 2>/dev/null | grep -E 'Address: ' | grep -v '#' | awk '{print $2}' | tr '\n' ', ' | sed 's/, $//'
+}
+
+# ── Парсинг поля из вывода openssl -brief ──────────────────
+parse_field() {
+    local text="$1"
+    local key="$2"
+    echo "$text" | grep -E "^$key:" | head -1 | sed "s/^$key: //"
+}
+
 # ── Проверка прокси ────────────────────────────────────────
 check_site() {
     local domain="$1"
     local port="${2:-443}"
+    local connect="${domain}:${port}"
     
     echo -e "\n${BOLD}🔎 ${domain}:${port}${NC}"
     
     # IP-адреса
-    echo -e "\n${CYAN}🌐 IP-адреса:${NC}"
-    nslookup $domain 2>/dev/null | grep -E 'Address: ' | grep -v '#' | awk '{print $2}' | head -3 | while read ip; do
-        echo "  $ip"
-    done
+    local ip_str=$(resolve_ip "$domain")
+    if [ -n "$ip_str" ]; then
+        echo -e "\n${CYAN}🌐 IP: ${NC}$ip_str"
+    fi
     echo ""
     
     # ── PQ-проверка через pqfetch ──────────────────────────
-    echo -e "${CYAN}━━━ PQ-подключение (X25519MLKEM768) ━━━${NC}"
+    echo -e "${CYAN}━━━ PQ-подключение ━━━${NC}"
     export PATH="$HOME/.cargo/bin:$PATH"
-    PQFECTH_OUTPUT=$(pqfetch $domain 2>&1 || true)
+    local pq_output=$(pqfetch "$domain" 2>&1 || true)
     
-    if echo "$PQFECTH_OUTPUT" | grep -qi "X25519MLKEM768"; then
-        echo -e "${GREEN}✅ ПОДДЕРЖИВАЕТ X25519MLKEM768${NC}"
-        echo "$PQFECTH_OUTPUT" | head -1
-        echo ""
-        echo -e "${GREEN}━━━ ВЕРДИКТ ━━━${NC}"
-        echo -e "${GREEN}🟢 PQ-безопасен (X25519MLKEM768)${NC}"
-    elif echo "$PQFECTH_OUTPUT" | grep -qi "X25519"; then
-        echo -e "${YELLOW}⚠️ Использует X25519 (классический)${NC}"
-        echo "$PQFECTH_OUTPUT" | head -1
-        echo ""
-        # Переходим к обычному TLS
-        check_regular_tls "$domain" "$port" "X25519"
-    else
-        echo -e "${RED}❌ PQ не поддерживается${NC}"
-        # Показываем причину если есть
-        echo "$PQFECTH_OUTPUT" | head -3 | grep -E "error|alert|invalid" | while read line; do
-            echo -e "  ${GRAY}${line}${NC}"
+    if echo "$pq_output" | grep -qi "X25519MLKEM768"; then
+        echo -e "${GREEN}✅ Статус: поддерживается${NC}"
+        # Показываем детали если есть
+        echo "$pq_output" | head -1 | while read line; do
+            if [ -n "$line" ]; then
+                echo "  $line"
+            fi
         done
         echo ""
-        # Переходим к обычному TLS
-        check_regular_tls "$domain" "$port" ""
+        echo -e "${GREEN}━━━ ВЕРДИКТ ━━━${NC}"
+        echo -e "${GREEN}🟢 Маркер: НЕТ — сервер принимает X25519MLKEM768${NC}"
+        return 0
     fi
-}
-
-# ── Проверка обычного TLS ───────────────────────────────────
-check_regular_tls() {
-    local domain="$1"
-    local port="$2"
-    local pq_status="$3"
     
+    # PQ не прошёл — проверяем обычный TLS
+    echo -e "${RED}🔸 Статус: не поддерживается${NC}"
+    
+    # Показываем причину
+    local reason=$(echo "$pq_output" | grep -E "alert|error:|invalid" | head -1)
+    if [ -n "$reason" ]; then
+        echo -e "  Причина: ${GRAY}${reason}${NC}"
+    fi
+    echo ""
+    
+    # ── Обычное TLS через openssl -brief ──────────────────
     echo -e "${CYAN}━━━ Обычное TLS-подключение ━━━${NC}"
     
-    # Пробуем через openssl s_client
-    local tls_info=""
+    local tls_output=""
     if command -v openssl &> /dev/null; then
-        tls_info=$(echo | timeout 5 openssl s_client -connect ${domain}:${port} -servername ${domain} 2>/dev/null | grep -E "Protocol|Cipher|Server Temp Key|subject=" | head -6)
+        tls_output=$(echo | timeout 5 openssl s_client -connect "$connect" -servername "$domain" -brief 2>/dev/null || true)
     fi
     
-    if [ -n "$tls_info" ]; then
+    if [ -n "$tls_output" ] && echo "$tls_output" | grep -qi "CONNECTION ESTABLISHED"; then
+        local proto=$(parse_field "$tls_output" "Protocol version")
+        local cipher=$(parse_field "$tls_output" "Ciphersuite")
+        local temp_key=$(parse_field "$tls_output" "Peer Temp Key")
+        local cert_cn=$(parse_field "$tls_output" "Peer certificate")
+        local sig=$(parse_field "$tls_output" "Signature type")
+        local hash_used=$(parse_field "$tls_output" "Hash used")
+        
         echo -e "${GREEN}🔹 Статус: OK${NC}"
-        echo "$tls_info"
+        [ -n "$proto" ] && echo "  Протокол: $proto"
+        [ -n "$cipher" ] && echo "  Шифронабор: $cipher"
+        [ -n "$temp_key" ] && echo "  Peer Temp Key: $temp_key"
+        [ -n "$cert_cn" ] && echo "  Сертификат: $cert_cn"
+        [ -n "$sig" ] && echo "  Подпись: $sig"
+        [ -n "$hash_used" ] && echo "  Хэш: $hash_used"
         echo ""
         
-        # Проверяем наличие X25519 в Server Temp Key
-        if echo "$tls_info" | grep -qi "X25519"; then
-            if [ "$pq_status" = "X25519" ] || [ -z "$pq_status" ]; then
-                echo -e "${RED}━━━ ВЕРДИКТ ━━━${NC}"
-                echo -e "${RED}🔴 МАРКЕР: ДА${NC}"
-                echo -e "${RED}PQ не поддерживается + Peer Temp Key = X25519${NC}"
-                echo -e "${YELLOW}⚠️ Риск блокировки на ТСПУ для iOS клиентов${NC}"
-            else
-                echo -e "${GREEN}━━━ ВЕРДИКТ ━━━${NC}"
-                echo -e "${GREEN}🟢 Маркер: НЕТ${NC}"
-                echo -e "${GREEN}PQ поддерживается${NC}"
-            fi
+        # ── Вердикт ──────────────────────────────────────────
+        if echo "$temp_key" | grep -qi "X25519"; then
+            echo -e "${RED}━━━ ВЕРДИКТ ━━━${NC}"
+            echo -e "${RED}🔴 МАРКЕР: ДА${NC}"
+            echo -e "${RED}PQ не поддерживается + Peer Temp Key = X25519${NC}"
+            echo -e "${YELLOW}⚠️ Риск блокировки на ТСПУ для iOS клиентов${NC}"
         else
             echo -e "${GREEN}━━━ ВЕРДИКТ ━━━${NC}"
             echo -e "${GREEN}🟢 Маркер: НЕТ${NC}"
@@ -229,11 +278,11 @@ check_regular_tls() {
     else
         # Пробуем через curl
         echo -e "${YELLOW}⚠️ openssl не дал результат, пробую через curl...${NC}"
-        local curl_info=$(timeout 5 curl -vI --tlsv1.3 --connect-timeout 3 "https://${domain}:${port}" 2>&1 | grep -E "SSL connection|TLS|subject" | head -5)
+        local curl_output=$(timeout 5 curl -vI --tlsv1.3 --connect-timeout 3 "https://${connect}" 2>&1 | grep -E "SSL connection|TLS|subject" | head -5 || true)
         
-        if [ -n "$curl_info" ]; then
+        if [ -n "$curl_output" ]; then
             echo -e "${GREEN}🔹 Статус: OK${NC}"
-            echo "$curl_info"
+            echo "$curl_output"
             echo ""
             echo -e "${GREEN}━━━ ВЕРДИКТ ━━━${NC}"
             echo -e "${GREEN}🟢 Маркер: НЕТ${NC}"
@@ -274,7 +323,6 @@ parse_and_check() {
         fi
         echo ""
     else
-        # Обычный домен или IP:порт
         domain="$input"
         if echo "$domain" | grep -q ":"; then
             port=$(echo "$domain" | cut -d':' -f2)
@@ -298,8 +346,10 @@ main() {
     echo -e "  ${DIM}═════════════════════════════════════════════════${NC}"
     echo ""
     
-    # Проверяем зависимости
-    check_dependencies
+    # Проверяем зависимости с запросом подтверждения
+    if ! check_dependencies; then
+        return 0
+    fi
     
     # Проверяем и устанавливаем Rust + pqfetch
     if ! install_pqfetch; then
