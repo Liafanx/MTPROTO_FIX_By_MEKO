@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # =============================================
-# SNI Checker - проверка TLS и PQ
+# SNI Checker - проверка TLS и PQ через pqfetch
 # По мотивам SNI_cheker бота
 # =============================================
 
@@ -38,14 +38,13 @@ print_warning() {
 
 # ── Проверка зависимостей ──────────────────────────────────
 check_dependencies() {
-    print_header "ПРОВЕРКА ЗАВИСИМОСТЕЙ vav"
+    print_header "ПРОВЕРКА ЗАВИСИМОСТЕЙ"
     
     if ! command -v cc &> /dev/null; then
         echo ""
         print_info "Для работы необходимо установить:"
         echo ""
         echo -e "  ${BOLD}• build-essential${NC} — компилятор"
-        echo -e "  ${BOLD}• openssl${NC} — для TLS"
         echo -e "  ${BOLD}• curl${NC} — для HTTP"
         echo -e "  ${BOLD}• dnsutils${NC} — для nslookup"
         echo ""
@@ -60,11 +59,11 @@ check_dependencies() {
         fi
         
         apt update -qq 2>/dev/null || true
-        apt install -y build-essential openssl curl dnsutils
+        apt install -y build-essential curl dnsutils
         print_success "Установлено"
     else
         local missing=()
-        for cmd in openssl curl nslookup; do
+        for cmd in curl nslookup; do
             if ! command -v $cmd &> /dev/null; then
                 missing+=($cmd)
             fi
@@ -90,7 +89,7 @@ check_dependencies() {
     return 0
 }
 
-# ── Проверка Rust и pqfetch ──────────────────────────────
+# ── Проверка и установка pqfetch ──────────────────────────
 install_pqfetch() {
     local need_rust=false
     local need_pqfetch=false
@@ -106,10 +105,10 @@ install_pqfetch() {
     [ "$need_rust" = false ] && [ "$need_pqfetch" = false ] && return 0
     
     echo ""
-    print_info "Для PQ-проверки нужны:"
+    print_info "Для работы нужны:"
     echo ""
     echo -e "  ${BOLD}1. Rust${NC} — язык"
-    echo -e "  ${BOLD}2. pqfetch${NC} — PQ-утилита"
+    echo -e "  ${BOLD}2. pqfetch${NC} — утилита для проверки PQ-шифров"
     echo ""
     echo -en "  ${BOLD}Установить?${NC} ${GREEN}[Enter/Y - да, N - нет]:${NC} "
     read -r install_confirm
@@ -147,11 +146,27 @@ resolve_ip() {
     nslookup "$host" 2>/dev/null | grep -E 'Address: ' | grep -v '#' | awk '{print $2}' | tr '\n' ', ' | sed 's/, $//'
 }
 
-# ── Парсинг поля из openssl -brief ──────────────────────
-parse_field() {
-    local text="$1"
-    local key="$2"
-    echo "$text" | grep -E "^$key:" | head -1 | sed "s/^$key: //"
+# ── Проверка через pqfetch ──────────────────────────────
+check_with_pqfetch() {
+    local target="$1"
+    local connect="${2:-$target:443}"
+    local is_ip="$3"
+    local sni="$4"
+    
+    local output=$(pqfetch "$target" 2>&1 || true)
+    
+    # Если pqfetch не смог — пробуем через curl
+    if [ -z "$output" ] || echo "$output" | grep -qi "error"; then
+        local curl_out=$(timeout 10 curl -vI --tlsv1.3 --connect-timeout 5 "https://$connect" 2>&1 | grep -E "SSL connection|TLS|subject" | head -5 || true)
+        if [ -n "$curl_out" ]; then
+            echo "CURL:$curl_out"
+            return 0
+        fi
+        return 1
+    fi
+    
+    echo "$output"
+    return 0
 }
 
 # ── Проверка ─────────────────────────────────────────────
@@ -165,15 +180,8 @@ check_site() {
     # Проверяем IP
     if [[ "$domain" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
         is_ip=true
-        # Пробуем определить SNI
-        local cert=$(echo | timeout 5 openssl s_client -connect "$connect" 2>/dev/null 2>&1 | openssl x509 -noout -subject 2>/dev/null)
-        if [ -n "$cert" ]; then
-            sni=$(echo "$cert" | sed -n 's/.*CN=\([^,]*\).*/\1/p' | head -1)
-            [ -n "$sni" ] && sni="${sni#\*.}"
-        fi
-        if [ -n "$sni" ]; then
-            echo -e "\n${CYAN}🔍 SNI определён: ${sni}${NC}"
-        fi
+        # Пытаемся определить SNI (для IP это не критично, pqfetch сам определит)
+        sni="$domain"
     fi
     
     echo -e "\n${BOLD}🔎 ${domain}:${port}${NC}"
@@ -184,85 +192,58 @@ check_site() {
     fi
     echo ""
     
-    # ── 1. PQ-проверка ──────────────────────────────────────
+    # ── Проверка через pqfetch ──────────────────────────────
     echo -e "${CYAN}━━━ PQ-подключение ━━━${NC}"
     
-    local pq_sni="$domain"
-    [ "$is_ip" = true ] && [ -n "$sni" ] && pq_sni="$sni"
+    export PATH="$HOME/.cargo/bin:$PATH"
+    local result=$(check_with_pqfetch "$domain" "$connect" "$is_ip" "$sni")
     
-    local pq_output=""
-    
-    # Пробуем через openssl с -groups
-    if command -v openssl &> /dev/null; then
-        pq_output=$(echo | timeout 10 openssl s_client -connect "$connect" -servername "$pq_sni" -groups X25519MLKEM768 -brief 2>/dev/null || true)
-    fi
-    
-    # Если openssl не дал результат или не поддерживает -groups — пробуем pqfetch
-    if [ -z "$pq_output" ] || ! echo "$pq_output" | grep -qi "CONNECTION ESTABLISHED"; then
-        if command -v pqfetch &> /dev/null; then
-            export PATH="$HOME/.cargo/bin:$PATH"
-            pq_output=$(pqfetch "$pq_sni" 2>&1 || true)
-        fi
-    fi
-    
-    if echo "$pq_output" | grep -qi "X25519MLKEM768"; then
-        local proto=$(parse_field "$pq_output" "Protocol version")
-        local cipher=$(parse_field "$pq_output" "Ciphersuite")
-        local temp=$(parse_field "$pq_output" "Peer Temp Key")
-        local cert=$(parse_field "$pq_output" "Peer certificate")
-        local sig=$(parse_field "$pq_output" "Signature type")
-        local hash=$(parse_field "$pq_output" "Hash used")
+    if [ -n "$result" ] && echo "$result" | grep -qi "X25519MLKEM768"; then
+        # Парсим вывод pqfetch
+        local proto=$(echo "$result" | grep -E "tls" | head -1 | awk '{print $2}')
+        local cipher=$(echo "$result" | grep -E "tls" | head -1 | awk '{print $3}')
         
         echo -e "${GREEN}✅ Статус: поддерживается${NC}"
         [ -n "$proto" ] && echo "  Протокол: $proto"
         [ -n "$cipher" ] && echo "  Шифронабор: $cipher"
-        [ -n "$temp" ] && echo "  Peer Temp Key: $temp"
-        [ -n "$cert" ] && echo "  Сертификат: $cert"
-        [ -n "$sig" ] && echo "  Подпись: $sig"
-        [ -n "$hash" ] && echo "  Хэш: $hash"
         echo ""
         echo -e "${GREEN}━━━ ВЕРДИКТ ━━━${NC}"
         echo -e "${GREEN}🟢 Маркер: НЕТ — сервер принимает X25519MLKEM768${NC}"
         return 0
     fi
     
-    # PQ не прошёл
-    echo -e "${RED}🔸 Статус: не поддерживается${NC}"
-    
-    local reason=$(echo "$pq_output" | grep -E "alert|error:|invalid" | head -1)
-    [ -n "$reason" ] && echo -e "  Причина: ${GRAY}${reason}${NC}"
-    echo ""
-    
-    # ── 2. Обычный TLS ──────────────────────────────────────
-    echo -e "${CYAN}━━━ Обычное TLS-подключение ━━━${NC}"
-    
-    local tls_sni="$domain"
-    [ "$is_ip" = true ] && [ -n "$sni" ] && tls_sni="$sni"
-    
-    local tls_output=""
-    if command -v openssl &> /dev/null; then
-        tls_output=$(echo | timeout 10 openssl s_client -connect "$connect" -servername "$tls_sni" -brief 2>/dev/null || true)
+    # Проверяем на X25519 (без PQ)
+    if [ -n "$result" ] && echo "$result" | grep -qi "X25519"; then
+        echo -e "${RED}🔸 Статус: не поддерживается${NC}"
+        echo ""
+        echo -e "${CYAN}━━━ Обычное TLS-подключение ━━━${NC}"
+        echo -e "${GREEN}🔹 Статус: OK${NC}"
+        
+        local cert=$(echo "$result" | grep -E "cert" | head -1 | sed 's/^.*CN=//' | cut -d' ' -f1)
+        [ -n "$cert" ] && echo "  Сертификат: $cert"
+        echo "  Peer Temp Key: X25519"
+        echo ""
+        echo -e "${RED}━━━ ВЕРДИКТ ━━━${NC}"
+        echo -e "${RED}🔴 МАРКЕР: ДА${NC}"
+        echo -e "${RED}PQ не поддерживается + Peer Temp Key = X25519${NC}"
+        echo -e "${YELLOW}⚠️ Риск блокировки на ТСПУ для iOS клиентов${NC}"
+        return 0
     fi
     
-    if [ -n "$tls_output" ] && echo "$tls_output" | grep -qi "CONNECTION ESTABLISHED"; then
-        local proto=$(parse_field "$tls_output" "Protocol version")
-        local cipher=$(parse_field "$tls_output" "Ciphersuite")
-        local temp=$(parse_field "$tls_output" "Peer Temp Key")
-        local cert=$(parse_field "$tls_output" "Peer certificate")
-        local sig=$(parse_field "$tls_output" "Signature type")
-        local hash=$(parse_field "$tls_output" "Hash used")
-        
+    # Если pqfetch не дал результата
+    echo -e "${RED}🔸 Статус: не поддерживается${NC}"
+    echo ""
+    
+    # ── Пробуем через curl ──────────────────────────────────
+    echo -e "${CYAN}━━━ Обычное TLS-подключение ━━━${NC}"
+    local curl_out=$(timeout 10 curl -vI --tlsv1.3 --connect-timeout 5 "https://$connect" 2>&1 | grep -E "SSL connection|TLS|subject|Server Temp Key" | head -5 || true)
+    
+    if [ -n "$curl_out" ]; then
         echo -e "${GREEN}🔹 Статус: OK${NC}"
-        [ -n "$proto" ] && echo "  Протокол: $proto"
-        [ -n "$cipher" ] && echo "  Шифронабор: $cipher"
-        [ -n "$temp" ] && echo "  Peer Temp Key: $temp"
-        [ -n "$cert" ] && echo "  Сертификат: $cert"
-        [ -n "$sig" ] && echo "  Подпись: $sig"
-        [ -n "$hash" ] && echo "  Хэш: $hash"
+        echo "$curl_out"
         echo ""
         
-        # ── Вердикт ──────────────────────────────────────────
-        if echo "$temp" | grep -qi "X25519"; then
+        if echo "$curl_out" | grep -qi "X25519"; then
             echo -e "${RED}━━━ ВЕРДИКТ ━━━${NC}"
             echo -e "${RED}🔴 МАРКЕР: ДА${NC}"
             echo -e "${RED}PQ не поддерживается + Peer Temp Key = X25519${NC}"
@@ -273,23 +254,10 @@ check_site() {
             echo -e "${GREEN}PQ не поддерживается, но Peer Temp Key не X25519${NC}"
         fi
     else
-        # Пробуем через curl
-        echo -e "${YELLOW}⚠️ openssl не дал результат, пробую через curl...${NC}"
-        local curl_out=$(timeout 10 curl -vI --tlsv1.3 --connect-timeout 5 "https://$connect" 2>&1 | grep -E "SSL connection|TLS|subject" | head -5 || true)
-        
-        if [ -n "$curl_out" ]; then
-            echo -e "${GREEN}🔹 Статус: OK${NC}"
-            echo "$curl_out"
-            echo ""
-            echo -e "${GREEN}━━━ ВЕРДИКТ ━━━${NC}"
-            echo -e "${GREEN}🟢 Маркер: НЕТ${NC}"
-            echo -e "${GREEN}TLS подключение установлено${NC}"
-        else
-            echo -e "${RED}❌ Не удалось подключиться по TLS${NC}"
-            echo ""
-            echo -e "${RED}━━━ ВЕРДИКТ ━━━${NC}"
-            echo -e "${RED}🔴 Не удалось проверить${NC}"
-        fi
+        echo -e "${RED}❌ Не удалось подключиться по TLS${NC}"
+        echo ""
+        echo -e "${RED}━━━ ВЕРДИКТ ━━━${NC}"
+        echo -e "${RED}🔴 Не удалось проверить${NC}"
     fi
     echo ""
 }
@@ -334,7 +302,6 @@ clear_screen() {
 
 # ── Главная ──────────────────────────────────────────────────
 main() {
-    # Если передан аргумент — просто проверяем и выходим
     if [ $# -gt 0 ]; then
         check_dependencies >/dev/null 2>&1
         install_pqfetch >/dev/null 2>&1
