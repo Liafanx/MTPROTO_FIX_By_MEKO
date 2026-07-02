@@ -1,11 +1,5 @@
 #!/bin/bash
 
-# =============================================
-# PQC Check Script - проверка X25519MLKEM768
-# По мотивам SNI_cheker бота
-# =============================================
-
-set -e
 
 # ── Цвета ─────────────────────────────────────────────────────
 RED='\033[0;31m'
@@ -40,7 +34,7 @@ print_warning() {
 
 # ── Проверка зависимостей ──────────────────────────────────
 check_dependencies() {
-    print_header "ПРОВЕРКА ЗАВИСИМОСТЕЙ v009"
+    print_header "ПРОВЕРКА ЗАВИСИМОСТЕЙ v99"
     
     if ! command -v cc &> /dev/null; then
         echo ""
@@ -172,9 +166,10 @@ parse_field() {
 get_sni_from_ip() {
     local ip="$1"
     local port="${2:-443}"
-    
     local sni=""
-    local cert=$(echo | timeout 5 openssl s_client -connect "$ip:$port" 2>/dev/null | openssl x509 -noout -subject 2>/dev/null)
+    
+    # Пробуем через openssl
+    local cert=$(echo | timeout 5 openssl s_client -connect "$ip:$port" 2>/dev/null 2>&1 | openssl x509 -noout -subject 2>/dev/null)
     
     if [ -n "$cert" ]; then
         sni=$(echo "$cert" | sed -n 's/.*CN=\([^,]*\).*/\1/p' | head -1)
@@ -210,7 +205,7 @@ check_site() {
     # Проверяем IP
     if [[ "$domain" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
         is_ip=true
-        sni=$(get_sni_from_ip "$domain" "$port")
+        sni=$(get_sni_from_ip "$domain" "$port" 2>/dev/null)
         if [ -n "$sni" ]; then
             echo -e "\n${CYAN}🔍 SNI определён: ${sni}${NC}"
         fi
@@ -219,37 +214,39 @@ check_site() {
     echo -e "\n${BOLD}🔎 ${domain}:${port}${NC}"
     
     if [ "$is_ip" = false ]; then
-        local ip_str=$(resolve_ip "$domain")
+        local ip_str=$(resolve_ip "$domain" 2>/dev/null)
         [ -n "$ip_str" ] && echo -e "\n${CYAN}🌐 IP: ${NC}$ip_str"
     fi
     echo ""
     
-    # ── PQ-проверка через openssl ──────────────────────────
+    # ── PQ-проверка ──────────────────────────────────────────
     echo -e "${CYAN}━━━ PQ-подключение ━━━${NC}"
     
+    # Сначала пробуем через pqfetch (он умеет PQ)
     local pq_target="$domain"
     [ "$is_ip" = true ] && [ -n "$sni" ] && pq_target="$sni"
     
     local pq_output=""
-    if command -v openssl &> /dev/null; then
-        pq_output=$(echo | timeout 10 openssl s_client -connect "$connect" -servername "$pq_target" -groups X25519MLKEM768 -brief 2>/dev/null || true)
+    if command -v pqfetch &> /dev/null; then
+        export PATH="$HOME/.cargo/bin:$PATH"
+        pq_output=$(pqfetch "$pq_target" 2>&1 || true)
     fi
     
-    if [ -n "$pq_output" ] && echo "$pq_output" | grep -qi "CONNECTION ESTABLISHED"; then
-        local proto=$(parse_field "$pq_output" "Protocol version")
-        local cipher=$(parse_field "$pq_output" "Ciphersuite")
-        local temp=$(parse_field "$pq_output" "Peer Temp Key")
-        local cert=$(parse_field "$pq_output" "Peer certificate")
-        local sig=$(parse_field "$pq_output" "Signature type")
-        local hash=$(parse_field "$pq_output" "Hash used")
-        
+    # Если pqfetch не помог или нет — пробуем openssl
+    if [ -z "$pq_output" ] || ! echo "$pq_output" | grep -qi "X25519MLKEM768"; then
+        if command -v openssl &> /dev/null; then
+            local ssl_out=$(echo | timeout 10 openssl s_client -connect "$connect" -servername "$domain" -groups X25519MLKEM768 -brief 2>/dev/null || true)
+            if [ -n "$ssl_out" ] && echo "$ssl_out" | grep -qi "CONNECTION ESTABLISHED"; then
+                pq_output="$ssl_out"
+            fi
+        fi
+    fi
+    
+    if echo "$pq_output" | grep -qi "X25519MLKEM768"; then
         echo -e "${GREEN}✅ Статус: поддерживается${NC}"
-        [ -n "$proto" ] && echo "  Протокол: $proto"
-        [ -n "$cipher" ] && echo "  Шифронабор: $cipher"
-        [ -n "$temp" ] && echo "  Peer Temp Key: $temp"
-        [ -n "$cert" ] && echo "  Сертификат: $cert"
-        [ -n "$sig" ] && echo "  Подпись: $sig"
-        [ -n "$hash" ] && echo "  Хэш: $hash"
+        echo "$pq_output" | head -1 | while read line; do
+            [ -n "$line" ] && echo "  $line"
+        done
         echo ""
         echo -e "${GREEN}━━━ ВЕРДИКТ ━━━${NC}"
         echo -e "${GREEN}🟢 Маркер: НЕТ — сервер принимает X25519MLKEM768${NC}"
@@ -258,9 +255,6 @@ check_site() {
     
     # PQ не прошёл
     echo -e "${RED}🔸 Статус: не поддерживается${NC}"
-    
-    local reason=$(echo "$pq_output" | grep -E "alert|error:|invalid" | head -1)
-    [ -n "$reason" ] && echo -e "  Причина: ${GRAY}${reason}${NC}"
     echo ""
     
     # ── Обычный TLS ──────────────────────────────────────────
