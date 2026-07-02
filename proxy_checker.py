@@ -514,10 +514,10 @@ def main():
     while True:
         os.system('clear' if os.name == 'posix' else 'cls')
         print("")
-        print(f"  {BOLD}{CYAN}🔍 ПРОВЕРКА ПРОКСИ,ДОМЕНА,АЙПИ НА ВАЛИД ЧЕРЕЗ TLS И PQ-БЕЗОПАСНОСТЬ v1.13 {NC}")
+        print(f"  {BOLD}{CYAN}🔍 ПРОВЕРКА ПРОКСИ,ДОМЕНА,АЙПИ НА ВАЛИД ЧЕРЕЗ TLS И PQ-БЕЗОПАСНОСТЬ v1.14 {NC}")
         print(f"  {DIM}═════════════════════════════════════════════════{NC}")
         print("")
-        print("  {NC}{BOLD}Краткое пояснение:")
+        print("  Краткое пояснение:")
         print(f"  {RED}{BOLD}Маркер есть - меняйте домен{NC}{BOLD}, иначе с подключением с ios могут быть проблемы{NC}")
         print(f"  {GREEN}{BOLD}Маркера нет - на ios проблем домен не вызовет.{NC}")
         print("")
