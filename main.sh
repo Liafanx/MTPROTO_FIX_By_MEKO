@@ -672,9 +672,32 @@ install_syn_fix() {
             log_info "Установка модуля xt_u32 для AlmaLinux..."
             echo ""
             
-            # Устанавливаем elrepo и модуль
-            echo -e "  ${BLUE}[i]${NC} Добавление репозитория elrepo..."
-            if sudo dnf install -y https://www.elrepo.org/elrepo-release-9.el9.elrepo.noarch.rpm 2>&1; then
+            # Определяем версию AlmaLinux
+            local ALMA_VERSION=""
+            if [ -f /etc/almalinux-release ]; then
+                ALMA_VERSION=$(grep -oE '[0-9]+' /etc/almalinux-release | head -1)
+            elif [ -f /etc/os-release ]; then
+                ALMA_VERSION=$(grep -E '^VERSION_ID=' /etc/os-release | cut -d'"' -f2 | cut -d'.' -f1)
+            fi
+            
+            if [ -z "$ALMA_VERSION" ]; then
+                ALMA_VERSION="9"
+                echo -e "  ${YELLOW}[!]${NC} Не удалось определить версию AlmaLinux, используем 9"
+            fi
+            
+            echo -e "  ${BLUE}[i]${NC} Обнаружена версия AlmaLinux: ${ALMA_VERSION}"
+            echo ""
+            
+            # Выбираем правильный пакет elrepo-release в зависимости от версии
+            local ELREPO_URL=""
+            if [ "$ALMA_VERSION" = "10" ]; then
+                ELREPO_URL="https://www.elrepo.org/elrepo-release-10.el10.elrepo.noarch.rpm"
+            else
+                ELREPO_URL="https://www.elrepo.org/elrepo-release-9.el9.elrepo.noarch.rpm"
+            fi
+            
+            echo -e "  ${BLUE}[i]${NC} Добавление репозитория elrepo (версия ${ALMA_VERSION})..."
+            if sudo dnf install -y "$ELREPO_URL" 2>&1; then
                 echo -e "  ${GREEN}[✓]${NC} Репозиторий elrepo добавлен"
             else
                 echo -e "  ${RED}[✗]${NC} Не удалось добавить репозиторий elrepo"
@@ -1123,7 +1146,7 @@ get_online_count() {
 show_header() {
     clear_screen
     echo ""
-    echo -e "  ${BOLD}MTProto Fixer by MEKO v1.41${NC}"
+    echo -e "  ${BOLD}MTProto Fixer by MEKO v1.42${NC}"
     echo -e "  ${DIM}===========================${NC}"
     echo ""
 
