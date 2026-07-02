@@ -92,9 +92,9 @@ detect_all_telemt_configs() {
     local SEEN_PATHS=""
     
     # 1. Смотрим запущенные процессы telemt
-    if pgrep -x telemt &>/dev/null || systemctl is-active telemt.service &>/dev/null 2>&1; then
+    if pgrep -x telemt &>/dev/null || timeout 2 systemctl is-active telemt.service &>/dev/null 2>&1; then
         local _args_list
-        _args_list=$(ps -eo args 2>/dev/null | grep '[t]elemt' | grep -v 'telemt-panel' | grep -v 'telemt_panel' | grep -oE '/[^ ]+\.toml' | sort -u)
+        _args_list=$(timeout 3 ps -eo args 2>/dev/null | grep '[t]elemt' | grep -v 'telemt-panel' | grep -v 'telemt_panel' | grep -oE '/[^ ]+\.toml' | sort -u)
         for _arg in $_args_list; do
             _arg=$(trim "$_arg")
             if [ -n "$_arg" ] && [ -f "$_arg" ] && ! _is_excluded_path "$_arg" && _looks_like_telemt_config "$_arg"; then
@@ -185,7 +185,7 @@ get_telemt_online_for_config() {
     fi
     
     # Пробуем через API
-    local _online=$(curl -s "http://127.0.0.1:9091/v1/stats/users/active-ips" 2>/dev/null | grep -o '"active_ips":\[[^]]*\]' | grep -o '[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}' | wc -l | tr -d ' ')
+    local _online=$(curl -s --max-time 2 --connect-timeout 1 "http://127.0.0.1:9091/v1/stats/users/active-ips" 2>/dev/null | grep -o '"active_ips":\[[^]]*\]' | grep -o '[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}' | wc -l | tr -d ' ')
     if [ -z "$_online" ] || [ "$_online" -lt 0 ] 2>/dev/null; then
         echo "0"
     else
@@ -316,8 +316,8 @@ PORT_FILE="/opt/mtpr-simple/port"
 # ── Функция определения порта SSH ────────────────────────────
 get_ssh_port() {
     local port
-    if command -v sshd >/dev/null 2>&1 && sshd -T 2>/dev/null | grep -q 'port '; then
-        port=$(sshd -T | grep 'port ' | awk '{print $2}' | head -1)
+    if command -v sshd >/dev/null 2>&1; then
+        port=$(timeout 3 sshd -T 2>/dev/null | grep '^port ' | awk '{print $2}' | head -1)
         if [[ "$port" =~ ^[0-9]+$ ]]; then
             echo "$port"
             return 0
@@ -900,7 +900,7 @@ apply_optimization() {
     else
         echo ""
         log_info "client_mss, mss_bulk и synlimit уже отключены или отсутствуют в конфиге"
-        echo -en "  ${BOLD}]:${NC}Включить mss и mss_bulk в конфиге telemt? [Y/n]:${NC} "
+        echo -en "  ${BOLD}Включить mss и mss_bulk в конфиге telemt? [Y/n]:${NC} "
         local confirm
         read -r confirm
         if [[ -z "$confirm" || "$confirm" =~ ^[yY]$ ]]; then
@@ -1021,48 +1021,11 @@ clear_screen() {
     clear 2>/dev/null || printf '\033[2J\033[H'
 }
 
-# ── Функция проверки установки Telemt ──────────────────────
-is_telemt_installed() {
-    command -v telemt >/dev/null 2>&1
-}
-
 is_mtprotozig_installed() {
     command -v mtbuddy >/dev/null 2>&1
 }
 
-get_telemt_version() {
-    if command -v telemt >/dev/null 2>&1; then
-        telemt --version 2>/dev/null | head -1 | awk '{print $2}'
-    else
-        echo ""
-    fi
-}
-
-# ── Функция получения онлайна Telemt для конфига ────────────
-get_telemt_online_for_config() {
-    local _cfg="$1"
-    _cfg=$(trim "$_cfg")
-    
-    if [ -z "$_cfg" ] || [ ! -f "$_cfg" ]; then
-        echo "0"
-        return 1
-    fi
-    
-    local _port=$(get_port_from_config "$_cfg")
-    if [ -z "$_port" ]; then
-        echo "0"
-        return 1
-    fi
-    
-    # Пробуем через API
-    local _online=$(curl -s "http://127.0.0.1:9091/v1/stats/users/active-ips" 2>/dev/null | grep -o '"active_ips":\[[^]]*\]' | grep -o '[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}' | wc -l | tr -d ' ')
-    if [ -z "$_online" ] || [ "$_online" -lt 0 ] 2>/dev/null; then
-        echo "0"
-    else
-        echo "$_online"
-    fi
-}
-
+# ── Функция получения онлайна Mtprotozig для конфига ────────────
 get_mtprotozig_online() {
     if is_mtprotozig_installed; then
         sudo journalctl -u mtproto-proxy -n 50 2>/dev/null | grep -o 'users_total=[0-9]*' | tail -1 | cut -d'=' -f2
@@ -1225,39 +1188,28 @@ show_header() {
     echo ""
 }
 
-
 # ── Функция проверки статуса базовой оптимизации ──────────
 is_optimization_applied() {
-    local applied=0
     local check_count=0
-    
-    # Проверяем sysctl параметры (3 ключевых)
-    if [ -f /etc/sysctl.d/99-custom.conf ]; then
-        # Проверяем tcp_congestion_control (BBR)
-        local current_congestion=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null)
-        if [ "$current_congestion" = "bbr" ]; then
-            check_count=$((check_count + 1))
-        fi
-        
-        # Проверяем default_qdisc (fq)
-        local current_qdisc=$(sysctl -n net.core.default_qdisc 2>/dev/null)
-        if [ "$current_qdisc" = "fq" ]; then
-            check_count=$((check_count + 1))
-        fi
-        
-        # Проверяем tcp_fastopen
-        local current_fastopen=$(sysctl -n net.ipv4.tcp_fastopen 2>/dev/null)
-        if [ "$current_fastopen" = "3" ]; then
-            check_count=$((check_count + 1))
-        fi
-    fi
-    
+
+    # Если файл конфига sysctl не существует — оптимизация не применена
+    [ -f /etc/sysctl.d/99-custom.conf ] || return 1
+
+    # Проверяем tcp_congestion_control (BBR)
+    [ "$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null)" = "bbr" ] \
+        && check_count=$((check_count + 1))
+
+    # Проверяем default_qdisc (fq)
+    [ "$(sysctl -n net.core.default_qdisc 2>/dev/null)" = "fq" ] \
+        && check_count=$((check_count + 1))
+
+    # Проверяем tcp_fastopen
+    [ "$(sysctl -n net.ipv4.tcp_fastopen 2>/dev/null)" = "3" ] \
+        && check_count=$((check_count + 1))
+
     # Если хотя бы 2 из 3 параметров совпадают — считаем оптимизацию применённой
-    if [ "$check_count" -ge 2 ]; then
-        applied=1
-    fi
-    
-    return $applied
+    # return 0 (true) = применена, return 1 (false) = не применена
+    [ "$check_count" -ge 2 ]
 }
 
 # ── Функция открытия меню прокси ──────────────────────────
@@ -1395,7 +1347,6 @@ main_menu() {
             echo ""
             apply_optimization
             echo ""
-            read -rsn1 -p "  Нажмите любую клавишу для возврата в меню..."
             ;;
         6)
             check_censor
@@ -1460,7 +1411,7 @@ update_script() {
         if mv "$temp" "$0"; then
             echo -e "  ${GREEN}[✓]${NC} Обновление успешно. Перезапускаемся..."
             sleep 2
-            exec "$0" "$@" -auto_install "$saved_port"
+            exec "$0" -auto_install "$saved_port"
         else
             echo -e "  ${RED}[✗]${NC} Не удалось перезаписать файл"
             rm -f "$temp"
