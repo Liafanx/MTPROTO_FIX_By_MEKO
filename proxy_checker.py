@@ -183,7 +183,27 @@ def check_ip(ip, port, sni):
     }
 
 def check_one(domain):
-    target = normalize(domain)
+    raw_input = domain.strip()
+    
+    # ── Обработка tg://proxy ссылок ──────────────────────────
+    # Пример: tg://proxy?server=155.212.137.124&port=443&secret=...
+    if raw_input.startswith('tg://'):
+        # Парсим параметры из URL
+        import urllib.parse
+        parsed = urllib.parse.urlparse(raw_input)
+        params = urllib.parse.parse_qs(parsed.query)
+        
+        server = params.get('server', [None])[0]
+        port = params.get('port', ['443'])[0]
+        
+        if server:
+            # Возвращаем в формате server:port для дальнейшей обработки
+            target = f"{server}:{port}"
+        else:
+            return "❌ Не удалось извлечь server из tg:// ссылки"
+    else:
+        target = normalize(raw_input)
+    
     if not target:
         return "❌ Пустой домен"
 
@@ -246,7 +266,7 @@ def check_one(domain):
         if has_any_marker:
             lines.append("")
             lines.append(f"{YELLOW}⚠️ Один из IP-адресов домена имеет маркер!{NC}")
-            lines.append(f"{YELLOW}Риск блокировки на ТСПУ для iOS клиентов{NC}")
+            lines.append(f"{YELLOW} Риск блокировки proxy на ios(используйте другой домен!){NC}")
         
         lines.append("")
         
@@ -324,7 +344,7 @@ def check_one(domain):
                     lines.append(f"{RED}━━━ ВЕРДИКТ ━━━{NC}")
                     lines.append(f"{RED}🔴 МАРКЕР: ДА{NC}")
                     lines.append(f"{RED}PQ не поддерживается + Peer Temp Key = X25519{NC}")
-                    lines.append(f"{YELLOW}⚠️ Риск блокировки на ТСПУ для iOS клиентов{NC}")
+                    lines.append(f"{YELLOW}⚠️Риск блокировки proxy на ios(используйте другой домен!){NC}")
                 else:
                     lines.append(f"{GREEN}━━━ ВЕРДИКТ ━━━{NC}")
                     lines.append(f"{GREEN}🟢 Маркер: НЕТ{NC}")
@@ -476,7 +496,7 @@ def check_one(domain):
             lines.append(f"{RED}━━━ ВЕРДИКТ ━━━{NC}")
             lines.append(f"{RED}🔴 МАРКЕР: ДА{NC}")
             lines.append(f"{RED}PQ не поддерживается + Peer Temp Key = X25519{NC}")
-            lines.append(f"{YELLOW}⚠️ Риск блокировки на ТСПУ для iOS клиентов{NC}")
+            lines.append(f"{YELLOW}⚠️Риск блокировки proxy на ios(используйте другой домен!){NC}")
         else:
             lines.append(f"{GREEN}━━━ ВЕРДИКТ ━━━{NC}")
             lines.append(f"{GREEN}🟢 Маркер: НЕТ{NC}")
@@ -494,13 +514,16 @@ def main():
     while True:
         os.system('clear' if os.name == 'posix' else 'cls')
         print("")
-        print(f"  {BOLD}{CYAN}🔍 ПРОВЕРКА TLS И PQ-БЕЗОПАСНОСТЬ v1.1 {NC}")
+        print(f"  {BOLD}{CYAN}🔍 ПРОВЕРКА ПРОКСИ,ДОМЕНА,АЙПИ НА ВАЛИД ЧЕРЕЗ TLS И PQ-БЕЗОПАСНОСТЬ v1.12 {NC}")
         print(f"  {DIM}═════════════════════════════════════════════════{NC}")
         print("")
+        print("  Краткое пояснение:")
+        print(f"  {DIM}Маркер есть - меняйте домен. С подключением с ios могут быть проблемы{NC}")
+        print(f"  {DIM}Маркера нет - на ios проблем домен не вызовет.{NC}")
         print("  Введите домен, IP:port или ссылку на прокси для проверки")
         print(f"  {DIM}Примеры:{NC}")
-        print(f"  {DIM}  • tg://proxy?server=212.8.*.*&port=443&secret=...{NC}")
-        print(f"  {DIM}  • 212.8.229.241:443{NC}")
+        print(f"  {DIM}  • tg://proxy?server=123.645.789.012&port=443&secret=...{NC}")
+        print(f"  {DIM}  • 123.645.789.012:443{NC}")
         print(f"  {DIM}  • rutube.ru{NC}")
         print(f"  {DIM}  • 0, n или q — выход{NC}")
         print("")
