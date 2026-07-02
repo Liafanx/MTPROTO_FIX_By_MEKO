@@ -647,11 +647,86 @@ install_syn_fix() {
     generate_apply_script "$FIX_TYPE" "${valid_ports[@]}"
     generate_service_unit
     systemctl daemon-reload
-    PORT="$ports_str" /opt/mtpr-simple/apply-mtpr-synfix.sh
-    systemctl enable mtpr-synfix.service
-    systemctl restart mtpr-synfix.service
 
-    log_success "SYN FIX успешно установлен на порты: $ports_str"
+    # ── Пытаемся применить правила с перехватом ошибки u32 ──
+    local apply_output
+    local apply_exit_code
+    apply_output=$(PORT="$ports_str" /opt/mtpr-simple/apply-mtpr-synfix.sh 2>&1)
+    apply_exit_code=$?
+
+    # Проверяем, была ли ошибка с u32 (только для нового варианта)
+    if [ "$FIX_TYPE" = "new" ] && [ $apply_exit_code -ne 0 ] && echo "$apply_output" | grep -q "u32"; then
+        echo ""
+        echo -e "  ${YELLOW}[!]${NC} Обнаружена ошибка: модуль u32 отсутствует"
+        echo -e "  ${YELLOW}[!]${NC} Для работы нового варианта SYN FIX требуется установить модуль xt_u32"
+        echo ""
+        echo -e "  ${BOLD}Установить необходимый модуль xt_u32?${NC}"
+        echo -e "  ${GREEN}Enter/Y${NC} — установить и продолжить"
+        echo -e "  ${RED}N/n${NC} — отменить установку и вернуться в меню"
+        echo ""
+        echo -en "  ${BOLD}Ввод:${NC} "
+        read -r install_u32
+
+        if [[ -z "$install_u32" || "$install_u32" =~ ^[yY]$ ]]; then
+            echo ""
+            log_info "Установка модуля xt_u32 для AlmaLinux..."
+            echo ""
+            
+            # Устанавливаем elrepo и модуль
+            echo -e "  ${BLUE}[i]${NC} Добавление репозитория elrepo..."
+            if sudo dnf install -y https://www.elrepo.org/elrepo-release-9.el9.elrepo.noarch.rpm 2>&1; then
+                echo -e "  ${GREEN}[✓]${NC} Репозиторий elrepo добавлен"
+            else
+                echo -e "  ${RED}[✗]${NC} Не удалось добавить репозиторий elrepo"
+                echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
+                read -rsn1
+                return 1
+            fi
+            
+            echo ""
+            echo -e "  ${BLUE}[i]${NC} Установка модуля kmod-xt_u32..."
+            if sudo dnf install -y kmod-xt_u32 2>&1; then
+                echo -e "  ${GREEN}[✓]${NC} Модуль kmod-xt_u32 успешно установлен"
+                echo ""
+                log_info "Повторная попытка применения правил..."
+                echo ""
+                
+                # Повторно применяем правила
+                PORT="$ports_str" /opt/mtpr-simple/apply-mtpr-synfix.sh
+                systemctl enable mtpr-synfix.service
+                systemctl restart mtpr-synfix.service
+                
+                log_success "SYN FIX успешно установлен на порты: $ports_str"
+            else
+                echo -e "  ${RED}[✗]${NC} Не удалось установить модуль kmod-xt_u32"
+                echo -e "  ${YELLOW}[!]${NC} Попробуйте выбрать старый вариант фикса (TTL+Length)"
+                echo ""
+                echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
+                read -rsn1
+                return 1
+            fi
+        else
+            log_info "Установка отменена"
+            echo ""
+            echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
+            read -rsn1
+            return 1
+        fi
+    elif [ $apply_exit_code -ne 0 ]; then
+        # Другая ошибка
+        echo ""
+        log_error "Ошибка применения правил iptables:"
+        echo "$apply_output"
+        echo ""
+        echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
+        read -rsn1
+        return 1
+    else
+        # Всё ок
+        systemctl enable mtpr-synfix.service
+        systemctl restart mtpr-synfix.service
+        log_success "SYN FIX успешно установлен на порты: $ports_str"
+    fi
 }
 
 # ── Удаление правил из файла iptables ──────────────────────
@@ -1048,7 +1123,7 @@ get_online_count() {
 show_header() {
     clear_screen
     echo ""
-    echo -e "  ${BOLD}MTProto Fixer by MEKO v1.4${NC}"
+    echo -e "  ${BOLD}MTProto Fixer by MEKO v1.41${NC}"
     echo -e "  ${DIM}===========================${NC}"
     echo ""
 
