@@ -1150,8 +1150,54 @@ get_online_count() {
 show_header() {
     clear_screen
     echo ""
-    echo -e "  ${BOLD}MTProto Fixer by MEKO v1.44${NC}"
+    echo -e "  ${BOLD}MTProto Fixer by MEKO v1.45${NC}"
     echo -e "  ${DIM}===========================${NC}"
+    echo ""
+
+    # ── ПОЛУЧАЕМ IP-АДРЕС СЕРВЕРА ──────────────────────────
+    local server_ip=""
+    # Пробуем получить через ip route (самый надёжный способ)
+    if command -v ip >/dev/null 2>&1; then
+        server_ip=$(ip route get 1 2>/dev/null | grep -o 'src [0-9.]*' | awk '{print $2}' | head -1)
+    fi
+    # Если не получилось — пробуем через curl
+    if [ -z "$server_ip" ]; then
+        server_ip=$(curl -4 -fsS --max-time 3 https://api.ipify.org 2>/dev/null)
+    fi
+    # Если всё ещё нет — пробуем через hostname -I
+    if [ -z "$server_ip" ]; then
+        server_ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+    fi
+    # Если ничего не получилось — пишем "не определено"
+    if [ -z "$server_ip" ]; then
+        server_ip="не определено"
+    fi
+
+    # ── ПОЛУЧАЕМ ОТКРЫТЫЕ ПОРТЫ ─────────────────────────────
+    local open_ports=""
+    # Проверяем порты из сохранённого файла (SYN FIX порты)
+    if [ -f "$PORT_FILE" ] && [ -s "$PORT_FILE" ]; then
+        open_ports=$(cat "$PORT_FILE")
+    fi
+    
+    # Если портов нет — пробуем определить из конфига Telemt
+    if [ -z "$open_ports" ] || [ "$open_ports" = "skip" ]; then
+        if [ -n "$CONFIG_TELEMT" ] && [ -f "$CONFIG_TELEMT" ]; then
+            local telemt_port=$(get_port_from_config "$CONFIG_TELEMT")
+            if [ -n "$telemt_port" ]; then
+                open_ports="$telemt_port"
+            fi
+        fi
+    fi
+    
+    # Если всё ещё нет портов — показываем "не определено"
+    if [ -z "$open_ports" ]; then
+        open_ports="не определено"
+    fi
+
+    # ── ВЫВОДИМ IP И ПОРТЫ ──────────────────────────────────
+    echo -e "  ${BOLD}IP:${NC} ${CYAN}${server_ip}${NC}"
+    echo -e "  ${BOLD}Открытые порты:${NC} ${CYAN}${open_ports}${NC}"
     echo ""
 
     # ── ПЕРЕЧИТЫВАЕМ ПУТЬ К КОНФИГУ КАЖДЫЙ РАЗ ──────────────
