@@ -11,7 +11,7 @@
 </div>
 
 <p align="center">
-  · <a href="#Quick-start">Installation in 1 click</a> · <a href="https://github.com/Mekotofeuka/MTPROTO_FIX_By_MEKO/blob/main/docs.md">Documentation</a> · <a href="#How-does-the-fix-work">How does it work?</a> · <a href="#Possible-problemswhy-might-it-not-work-for-me">Problem solving</a> ·
+  · <a href="#Quick-start">Installation in 1 click</a> · <a href="https://github.com/Mekotofeuka/MTPROTO_FIX_By_MEKO/blob/main/docs_eng.md">Documentation</a> · <a href="#How-does-the-fix-work">How does it work?</a> · <a href="#Possible-problemswhy-might-it-not-work-for-me">Problem solving</a> ·
 </p>
 
 <div align="center">
@@ -101,7 +101,7 @@ Applies a set of rules to the server that divides devices into 2 types - **ios**
 - There is simply no need for MSS in this build, so the script has a function to disable it. If you leave a rule or config setting with MSS or another SYN limit option, media and speed will still be reduced, so it is recommended to comment/delete them from the server before applying the fix.
 
 **If you want to dive deeper into this topic, you can read our documentation:
-· <a href="https://github.com/Mekotofeuka/MTPROTO_FIX_By_MEKO/blob/main/docs.md">Documentation (click)</a> ·**
+· <a href="https://github.com/Mekotofeuka/MTPROTO_FIX_By_MEKO/blob/main/docs_eng.md">Documentation (click)</a> ·**
 
 # How to make a proxy from the Russian Federation directly, with a working MiddleProxy (useful for those who use the "sponsor channel")
 
