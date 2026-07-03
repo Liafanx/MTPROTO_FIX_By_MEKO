@@ -584,8 +584,12 @@ install_syn_fix() {
 
         echo ""
         echo -e "  ${BOLD}Выберите тип SYN FIX:${NC}"
-        echo -e "  ${GREEN}[1]${NC}  ${BOLD}Новый вариант${NC} (u32 + ACCEPT без лимита) — ${GREEN}рекомендуется${NC}"
-        echo -e "  ${CYAN}[2]${NC}  ${BOLD}Старый вариант${NC} (TTL+Length + ACCEPT без лимита)"
+        echo -e "  ${GREEN}[1]${NC}  ${BOLD}Новый вариант${NC} (Разделение устройств с помощью u32 по байтам из пакета) — ${GREEN}рекомендуется${NC}"
+		echo -e "${NC}  Если совпало -> это ios и принимаем пакеты без лимита"
+		echo -e "${NC}  Если не совпало -> это другое ус-во и ставим SYN 1/s"
+        echo -e "  ${CYAN}[2]${NC}  ${BOLD}Старый вариант${NC} (Разделение устройств   определяя их TTL+Length)"
+		echo -e "${NC}  Если TTL <65 и length 64 -> это ios и принимаем пакеты без лимита"
+		echo -e "${NC}  Иначе -> это другое ус-во и ставим SYN 1/s"
         echo ""
         echo -en "  ${NC}${BOLD}Ввод (Новый - ${GREEN}${BOLD}1 или enter${NC}${BOLD}, старый - ${RED}${BOLD}2${NC}${BOLD}):${NC} "
         read -r fix_choice
@@ -1146,7 +1150,7 @@ get_online_count() {
 show_header() {
     clear_screen
     echo ""
-    echo -e "  ${BOLD}MTProto Fixer by MEKO v1.43${NC}"
+    echo -e "  ${BOLD}MTProto Fixer by MEKO v1.44${NC}"
     echo -e "  ${DIM}===========================${NC}"
     echo ""
 
