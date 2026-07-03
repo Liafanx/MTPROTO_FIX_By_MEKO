@@ -1197,8 +1197,7 @@ show_header() {
 
     # ── ВЫВОДИМ IP И ПОРТЫ ──────────────────────────────────
     echo -e "  ${BOLD}IP:${NC} ${CYAN}${server_ip}${NC}"
-    echo -e "  ${BOLD}Открытые порты:${NC} ${CYAN}${open_ports}${NC}"
-    echo ""
+    echo -e "  ${BOLD}Порты для прокси:${NC} ${CYAN}${open_ports}${NC}"
 
     # ── ПЕРЕЧИТЫВАЕМ ПУТЬ К КОНФИГУ КАЖДЫЙ РАЗ ──────────────
     local current_config_path=""
