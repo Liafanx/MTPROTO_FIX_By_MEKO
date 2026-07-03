@@ -1146,7 +1146,7 @@ get_online_count() {
 show_header() {
     clear_screen
     echo ""
-    echo -e "  ${BOLD}MTProto Fixer by MEKO v1.42${NC}"
+    echo -e "  ${BOLD}MTProto Fixer by MEKO v1.43${NC}"
     echo -e "  ${DIM}===========================${NC}"
     echo ""
 
@@ -1174,7 +1174,21 @@ show_header() {
             current_config_path="$_first"
             # Обновляем сохранённый путь
             echo "$_first" > "$CONFIG_PATH_FILE"
+        fi
+    fi
+
+    # ── ОБНОВЛЯЕМ ГЛОБАЛЬНУЮ ПЕРЕМЕННУЮ ──────────────────────
+    if [ -n "$current_config_path" ] && [ -f "$current_config_path" ]; then
+        CONFIG_TELEMT="$current_config_path"
+    elif [ -z "$current_config_path" ] || [ ! -f "$current_config_path" ]; then
+        # Если конфиг не найден — пробуем найти через detect_all_telemt_configs
+        local _detected=$(detect_all_telemt_configs)
+        local _first=$(echo "$_detected" | cut -d':' -f1)
+        if [ -n "$_first" ] && [ -f "$_first" ]; then
             CONFIG_TELEMT="$_first"
+            echo "$_first" > "$CONFIG_PATH_FILE"
+        else
+            CONFIG_TELEMT=""
         fi
     fi
 
