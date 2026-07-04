@@ -157,6 +157,16 @@ TON(GRAM)
 UQDdT8vtR5DmbwzNvMUiNQnwxlbkFq4ypE2_UzIm6bQ88DbU
 ```
 
+BTC
+```Bash
+bc1qqfkknfrhhufq6dm7cczmdtjkgv56ma3gnz0utk
+```
+
+SOL SPL
+```Bash
+Gn7w3EBkZqPjPDcbkTaxspip42TuhoGqaaEqHAxhG9V1
+```
+
 
 Также вы можете поддержать меня, воспользовавшись моим сервисом:
 
