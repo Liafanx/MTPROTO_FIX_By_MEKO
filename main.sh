@@ -398,10 +398,26 @@ is_our_syn_fix_installed() {
     is_syn_fix_chain_installed
 }
 
+# ── ПРОВЕРКА НАЛИЧИЯ NFTABLES SYN FIX ────────────────────────
+is_nft_fix_installed() {
+    nft list table inet mtpr_synfix &>/dev/null
+}
 
+is_nft_fix_service_running() {
+    systemctl is-active --quiet mtpr-nft-synfix.service 2>/dev/null
+}
 
-
-
+get_nft_fix_status() {
+    if is_nft_fix_installed; then
+        if is_nft_fix_service_running; then
+            echo "active"
+        else
+            echo "has_table_only"
+        fi
+    else
+        echo "inactive"
+    fi
+}
 
 # ── УСТАНОВКА SYN FIX ──────────────────────────────────────
 install_syn_fix() {
@@ -580,9 +596,9 @@ Wants=docker.service
 
 [Service]
 Type=oneshot
+RemainAfterExit=yes
 ExecStart=/usr/sbin/nft -f /opt/mtpr-simple/mtpr-synfix-nft.sh
 ExecStop=/usr/sbin/nft delete table inet mtpr_synfix
-RemainAfterExit=yes
 
 [Install]
 WantedBy=multi-user.target
@@ -768,10 +784,11 @@ remove_iptables_rules() {
     log_success "Правила $SYNFIX_CHAIN удалены из $rules_file"
 }
 
-# ── Удаление SYN FIX ────────────────────────────────────────
+# ── Удаление SYN FIX (iptables + nftables) ────────────────
 remove_syn_fix() {
     log_info "Удаление SYN FIX..."
 
+    # Удаляем iptables
     systemctl stop mtpr-synfix.service 2>/dev/null || true
     systemctl disable mtpr-synfix.service 2>/dev/null || true
 
@@ -788,9 +805,17 @@ remove_syn_fix() {
 
     rm -f "$PORT_FILE"
     rm -f /etc/systemd/system/mtpr-synfix.service
+
+    # Удаляем nftables
+    systemctl stop mtpr-nft-synfix.service 2>/dev/null || true
+    systemctl disable mtpr-nft-synfix.service 2>/dev/null || true
+    rm -f /etc/systemd/system/mtpr-nft-synfix.service
+    nft delete table inet mtpr_synfix 2>/dev/null || true
+    rm -f /opt/mtpr-simple/mtpr-synfix-nft.sh
+
     systemctl daemon-reload
 
-    log_success "SYN FIX удалён"
+    log_success "SYN FIX (iptables + nftables) удалён"
 }
 
 restart_syn_fix_service() {
@@ -1030,6 +1055,7 @@ remove_mekopr() {
     echo ""
     echo -e "  ${BOLD}Что будет удалено:${NC}"
     echo -e "  • Все iptables правила и цепочка ${CYAN}$SYNFIX_CHAIN${NC}"
+    echo -e "  • Все nftables правила (mtpr_synfix)${NC}"
     echo -e "  • Все файлы конфигурации в ${CYAN}/opt/mtpr-simple${NC}"
     echo -e "  • Сам скрипт ${CYAN}$0${NC}"
     echo ""
@@ -1092,37 +1118,30 @@ get_online_count() {
 show_header() {
     clear_screen
     echo ""
-    echo -e "  ${BOLD}MTProto Fixer by MEKO v1.49${NC}"
+    echo -e "  ${BOLD}MTProto Fixer by MEKO v1.50${NC}"
     echo -e "  ${DIM}===========================${NC}"
     echo ""
 
     # ── ПОЛУЧАЕМ IP-АДРЕС СЕРВЕРА ──────────────────────────
     local server_ip=""
-    # Пробуем получить через ip route (самый надёжный способ)
     if command -v ip >/dev/null 2>&1; then
         server_ip=$(ip route get 1 2>/dev/null | grep -o 'src [0-9.]*' | awk '{print $2}' | head -1)
     fi
-    # Если не получилось — пробуем через curl
     if [ -z "$server_ip" ]; then
         server_ip=$(curl -4 -fsS --max-time 3 https://api.ipify.org 2>/dev/null)
     fi
-    # Если всё ещё нет — пробуем через hostname -I
     if [ -z "$server_ip" ]; then
         server_ip=$(hostname -I 2>/dev/null | awk '{print $1}')
     fi
-    # Если ничего не получилось — пишем "не определено"
     if [ -z "$server_ip" ]; then
         server_ip="не определено"
     fi
 
     # ── ПОЛУЧАЕМ ОТКРЫТЫЕ ПОРТЫ ─────────────────────────────
     local open_ports=""
-    # Проверяем порты из сохранённого файла (SYN FIX порты)
     if [ -f "$PORT_FILE" ] && [ -s "$PORT_FILE" ]; then
         open_ports=$(cat "$PORT_FILE")
     fi
-    
-    # Если портов нет — пробуем определить из конфига Telemt
     if [ -z "$open_ports" ] || [ "$open_ports" = "skip" ]; then
         if [ -n "$CONFIG_TELEMT" ] && [ -f "$CONFIG_TELEMT" ]; then
             local telemt_port=$(get_port_from_config "$CONFIG_TELEMT")
@@ -1131,48 +1150,36 @@ show_header() {
             fi
         fi
     fi
-    
-    # Если всё ещё нет портов — показываем "не определено"
     if [ -z "$open_ports" ]; then
         open_ports="не определено"
     fi
 
-    # ── ВЫВОДИМ IP И ПОРТЫ ──────────────────────────────────
     echo -e "  ${BOLD}IP:${NC} ${CYAN}${server_ip}${NC}"
     echo -e "  ${BOLD}Порты для прокси:${NC} ${CYAN}${open_ports}${NC}"
 
-    # ── ПЕРЕЧИТЫВАЕМ ПУТЬ К КОНФИГУ КАЖДЫЙ РАЗ ──────────────
+    # ── ПЕРЕЧИТЫВАЕМ ПУТЬ К КОНФИГУ ──────────────────────────
     local current_config_path=""
-    
-    # 1. Сначала проверяем сохранённый путь
     if [ -f "$CONFIG_PATH_FILE" ] && [ -s "$CONFIG_PATH_FILE" ]; then
         local _saved=$(cat "$CONFIG_PATH_FILE")
         if [ "$_saved" != "skip" ] && [ -n "$_saved" ]; then
             current_config_path="$_saved"
         fi
     fi
-    
-    # 2. Если сохранённого нет — используем CONFIG_TELEMT
     if [ -z "$current_config_path" ] && [ -n "$CONFIG_TELEMT" ] && [ "$CONFIG_TELEMT" != "skip" ]; then
         current_config_path="$CONFIG_TELEMT"
     fi
-    
-    # 3. Если путь есть, но файла нет — пробуем найти через detect
     if [ -n "$current_config_path" ] && [ ! -f "$current_config_path" ]; then
         local _detected=$(detect_all_telemt_configs)
         local _first=$(echo "$_detected" | cut -d':' -f1)
         if [ -n "$_first" ] && [ -f "$_first" ]; then
             current_config_path="$_first"
-            # Обновляем сохранённый путь
             echo "$_first" > "$CONFIG_PATH_FILE"
         fi
     fi
 
-    # ── ОБНОВЛЯЕМ ГЛОБАЛЬНУЮ ПЕРЕМЕННУЮ ──────────────────────
     if [ -n "$current_config_path" ] && [ -f "$current_config_path" ]; then
         CONFIG_TELEMT="$current_config_path"
     elif [ -z "$current_config_path" ] || [ ! -f "$current_config_path" ]; then
-        # Если конфиг не найден — пробуем найти через detect_all_telemt_configs
         local _detected=$(detect_all_telemt_configs)
         local _first=$(echo "$_detected" | cut -d':' -f1)
         if [ -n "$_first" ] && [ -f "$_first" ]; then
@@ -1183,21 +1190,24 @@ show_header() {
         fi
     fi
 
-    # ── ПОЛУЧАЕМ ВСЕ КОНФИГИ TELEMT ──────────────────────────
-    local all_configs=$(detect_all_telemt_configs)
-    local configs_array=()
+    # ── СТАТУС SYN FIX (iptables + nftables) ──────────────
+    local iptables_status=$(get_synfix_status)
+    local nft_status=$(get_nft_fix_status)
     
-    if [ -n "$all_configs" ]; then
-        IFS=':' read -ra configs_array <<< "$all_configs"
+    if [ "$iptables_status" = "active" ]; then
+        echo -e "  ${BOLD}SYN FIX (iptables):${NC} ${GREEN}Установлен${NC}"
+    elif [ "$iptables_status" = "has_chain_only" ]; then
+        echo -e "  ${BOLD}SYN FIX (iptables):${NC} ${YELLOW}Цепочка есть, сервис не запущен${NC}"
+    else
+        echo -e "  ${BOLD}SYN FIX (iptables):${NC} ${RED}Не установлен${NC}"
     fi
 
-    local synfix_status=$(get_synfix_status)
-    if [ "$synfix_status" = "active" ]; then
-        echo -e "  ${BOLD}SYN FIX:${NC} ${GREEN}Установлен${NC}"
-    elif [ "$synfix_status" = "has_chain_only" ]; then
-        echo -e "  ${BOLD}SYN FIX:${NC} ${YELLOW}Цепочка есть, сервис не запущен${NC}"
+    if [ "$nft_status" = "active" ]; then
+        echo -e "  ${BOLD}SYN FIX (nftables/Docker):${NC} ${GREEN}Установлен${NC}"
+    elif [ "$nft_status" = "has_table_only" ]; then
+        echo -e "  ${BOLD}SYN FIX (nftables/Docker):${NC} ${YELLOW}Таблица есть, сервис не запущен${NC}"
     else
-        echo -e "  ${BOLD}SYN FIX:${NC} ${RED}${BOLD}Не установлен${NC}"
+        echo -e "  ${BOLD}SYN FIX (nftables/Docker):${NC} ${RED}Не установлен${NC}"
     fi
 
     local telemt_installed=false
@@ -1211,6 +1221,12 @@ show_header() {
     fi
 
     # ── ВЫВОДИМ ВСЕ НАЙДЕННЫЕ КОНФИГИ TELEMT ──────────────────
+    local all_configs=$(detect_all_telemt_configs)
+    local configs_array=()
+    if [ -n "$all_configs" ]; then
+        IFS=':' read -ra configs_array <<< "$all_configs"
+    fi
+
     local first_config=true
     
     if [ ${#configs_array[@]} -gt 0 ]; then
@@ -1226,7 +1242,6 @@ show_header() {
             local _mss_bulk_enabled=$(is_mss_bulk_enabled_for_config "$cfg" && echo "включен" || echo "отключен")
             local _synlimit_enabled=$(is_synlimit_enabled_for_config "$cfg" && echo "включен" || echo "отключен")
             
-            # Формируем цвет для версии
             local version_color=""
             if [ "$_version" = "3.4.18" ]; then
                 version_color="${GREEN}"
@@ -1260,7 +1275,6 @@ show_header() {
             echo -e "  ${BOLD}Встроенный MSS:${NC} ${mss_color}${_mss_enabled}${NC}  |  ${BOLD}MSS_BULK:${NC} ${mss_bulk_color}${_mss_bulk_enabled}${NC}  |  ${BOLD}Synlimit:${NC} ${synlimit_color}${_synlimit_enabled}${NC}"
         done
     elif [ "$telemt_installed" = true ] && [ ${#configs_array[@]} -eq 0 ]; then
-        # Telemt установлен, но конфиги не найдены
         local _version=$(get_telemt_version)
         local version_color=""
         if [ "$_version" = "3.4.18" ]; then
@@ -1283,7 +1297,6 @@ show_header() {
         fi
     fi
 
-    # Если ничего не установлено
     if [ "$telemt_installed" = false ] && [ "$mtprotozig_installed" = false ]; then
         echo -e "  ${RED}${BOLD}Прокси не установлены${NC}"
     fi
@@ -1295,23 +1308,17 @@ show_header() {
 is_optimization_applied() {
     local check_count=0
 
-    # Если файл конфига sysctl не существует — оптимизация не применена
-    [ -f /etc/sysctl.d/99-custom.conf ] || return 1
+    if [ -f /etc/sysctl.d/99-custom.conf ] || return 1
 
-    # Проверяем tcp_congestion_control (BBR)
     [ "$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null)" = "bbr" ] \
         && check_count=$((check_count + 1))
 
-    # Проверяем default_qdisc (fq)
     [ "$(sysctl -n net.core.default_qdisc 2>/dev/null)" = "fq" ] \
         && check_count=$((check_count + 1))
 
-    # Проверяем tcp_fastopen
     [ "$(sysctl -n net.ipv4.tcp_fastopen 2>/dev/null)" = "3" ] \
         && check_count=$((check_count + 1))
 
-    # Если хотя бы 2 из 3 параметров совпадают — считаем оптимизацию применённой
-    # return 0 (true) = применена, return 1 (false) = не применена
     [ "$check_count" -ge 2 ]
 }
 
@@ -1361,13 +1368,15 @@ main_menu() {
         show_header
         echo ""
 
-        local synfix_status=$(get_synfix_status)
-        if [ "$synfix_status" = "inactive" ]; then
-            local item1="${GREEN}${BOLD}Установить SYN + u32 FIX${NC}"
-        elif [ "$synfix_status" = "has_chain_only" ]; then
-            local item1="${CYAN}Перезапустить сервис${NC}"
-        else
+        local iptables_status=$(get_synfix_status)
+        local nft_status=$(get_nft_fix_status)
+        
+        if [ "$iptables_status" = "inactive" ] && [ "$nft_status" = "inactive" ]; then
+            local item1="${GREEN}${BOLD}Установить SYN FIX${NC}"
+        elif [ "$iptables_status" != "inactive" ] || [ "$nft_status" != "inactive" ]; then
             local item1="${RED}${BOLD}Удалить SYN FIX${NC}"
+        else
+            local item1="${CYAN}Перезапустить сервис${NC}"
         fi
 
         if is_optimization_applied; then
@@ -1397,24 +1406,12 @@ main_menu() {
         case "$choice" in
         1)
             echo ""
-            local synfix_status=$(get_synfix_status)
-
-            if [ "$synfix_status" = "inactive" ]; then
-                if ! install_syn_fix; then
-                    continue
-                fi
-            elif [ "$synfix_status" = "has_chain_only" ]; then
-                log_info "Цепочка SYN FIX найдена, но сервис не запущен. Перезапустить сервис?"
-                echo -en "  ${BOLD}Перезапустить? [Y/n]:${NC} "
-                local confirm
-                read -r confirm
-                if [[ -z "$confirm" || "$confirm" =~ ^[yY]$ ]]; then
-                    restart_syn_fix_service
-                else
-                    log_info "Отмена перезапуска"
-                fi
-            else
-                log_info "Обнаружена установленная цепочка SYN FIX ($SYNFIX_CHAIN). Удалить её?"
+            local iptables_status=$(get_synfix_status)
+            local nft_status=$(get_nft_fix_status)
+            
+            # Если установлен iptables
+            if [ "$iptables_status" != "inactive" ]; then
+                log_info "Обнаружен iptables SYN FIX ($SYNFIX_CHAIN). Удалить?"
                 echo -en "  ${BOLD}Удалить? [Y/n]:${NC} "
                 local confirm
                 read -r confirm
@@ -1423,6 +1420,30 @@ main_menu() {
                 else
                     log_info "Отмена удаления"
                 fi
+                echo ""
+                read -rsn1 -p "  Нажмите любую клавишу для возврата в меню..."
+                continue
+            fi
+            
+            # Если установлен nftables
+            if [ "$nft_status" != "inactive" ]; then
+                log_info "Обнаружен nftables SYN FIX (mtpr_synfix). Удалить?"
+                echo -en "  ${BOLD}Удалить? [Y/n]:${NC} "
+                local confirm
+                read -r confirm
+                if [[ -z "$confirm" || "$confirm" =~ ^[yY]$ ]]; then
+                    remove_syn_fix
+                else
+                    log_info "Отмена удаления"
+                fi
+                echo ""
+                read -rsn1 -p "  Нажмите любую клавишу для возврата в меню..."
+                continue
+            fi
+            
+            # Если ничего не установлено — запускаем установку
+            if ! install_syn_fix; then
+                continue
             fi
             echo ""
             read -rsn1 -p "  Нажмите любую клавишу для возврата в меню..."
@@ -1456,7 +1477,6 @@ main_menu() {
                 continue
             fi
             
-            # Сравниваем версии (простое сравнение строк, работает для 3.x.x)
             if [[ "$(printf '%s\n' "$REQUIRED_VERSION" "$OPENSSL_VERSION" | sort -V | head -n1)" != "$REQUIRED_VERSION" ]]; then
                 echo ""
                 echo -e "  ${RED}${BOLD}❌ Данная функция доступна только на ОС с OpenSSL 3.5 и выше${NC}"
