@@ -935,7 +935,7 @@ manage_mss() {
 while true; do
     clear
     echo ""
-    echo -e "  ${BOLD}Telemt меню v0.70${NC}"
+    echo -e "  ${BOLD}Telemt меню v0.71${NC}"
     echo -e "  ${DIM}===========================${NC}"
     
     # Показываем информацию о Telemt, если установлен
@@ -996,6 +996,7 @@ while true; do
     echo -e "  ${CYAN}[5]${NC}  ${BOLD}Обновить путь к конфигу Telemt${NC}"
     echo -e "  ${CYAN}[6]${NC}  ${BOLD}Посмотреть логи Telemt${NC}"
     echo -e "  ${CYAN}[7]${NC}  ${BOLD}Вывести ссылку на подключение для пользователя${NC}"
+    echo -e "  ${RED}[8]${NC}  ${BOLD}Удалить Telemt${NC}"
     
     # ── Динамическое отображение статуса MSS в меню ──────
     config_path=$(get_config_path)
@@ -1009,7 +1010,6 @@ while true; do
         echo -e "  ${CYAN}[9]${NC}  ${BOLD}Управление MSS в конфиге${NC} ${DIM}(client_mss, mss_bulk, synlimit)${NC}"
     fi
     
-    echo -e "  ${RED}[8]${NC}  ${BOLD}Удалить Telemt${NC}"
     echo -e "  ${CYAN}[0]${NC}  ${BOLD}Назад в прокси меню${NC}"
     echo ""
     
