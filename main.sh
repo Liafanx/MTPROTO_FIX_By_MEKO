@@ -582,7 +582,7 @@ install_syn_fix() {
         cat > "$NFT_SCRIPT" << 'NFT_EOF'
 #!/usr/bin/env nft -f
 
-delete table inet mtpr_synfix 2>/dev/null
+delete table inet mtpr_synfix
 add table inet mtpr_synfix
 
 # Цепочка для входящего трафика (hook input)
@@ -622,9 +622,14 @@ CLASSIC_NFT_EOF
 
         chmod +x "$NFT_SCRIPT"
 
-        # ── Применяем правила с выводом ошибки ──────────────
+        # ── Применяем правила с обёрткой для старых nftables ──
         local nft_output
         local nft_exit_code
+        
+        # Удаляем таблицу если существует (через shell, а не внутри nft)
+        nft delete table inet mtpr_synfix 2>/dev/null || true
+        
+        # Применяем скрипт
         nft_output=$(/usr/sbin/nft -f "$NFT_SCRIPT" 2>&1)
         nft_exit_code=$?
 
@@ -641,7 +646,6 @@ CLASSIC_NFT_EOF
             echo -e "  ${DIM}• Ядро не поддерживает nftables${NC}"
             echo -e "  ${DIM}• Не загружены модули ядра (nft_tables, nft_chain_nat, etc.)${NC}"
             echo -e "  ${DIM}• Версия nftables слишком старая${NC}"
-            echo -e "  ${DIM}• Используйте iptables режимы (1 или 2) вместо Docker режимов${NC}"
             echo ""
             echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
             read -rsn1
@@ -1191,7 +1195,7 @@ get_online_count() {
 show_header() {
     clear_screen
     echo ""
-    echo -e "  ${BOLD}MTProto Fixer by MEKO v1.53${NC}"
+    echo -e "  ${BOLD}MTProto Fixer by MEKO v1.54${NC}"
     echo -e "  ${DIM}===========================${NC}"
     echo ""
 
