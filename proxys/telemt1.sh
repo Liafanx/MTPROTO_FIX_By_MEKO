@@ -919,7 +919,7 @@ manage_mss() {
 while true; do
     clear
     echo ""
-    echo -e "  ${BOLD}Telemt меню v0.61${NC}"
+    echo -e "  ${BOLD}Telemt меню v0.62${NC}"
     echo -e "  ${DIM}===========================${NC}"
     
     # Показываем информацию о Telemt, если установлен
@@ -963,7 +963,7 @@ while true; do
     echo -e "  ${CYAN}[6]${NC}  ${BOLD}Вывести ссылку на подключение для пользователя${NC}"
     
     # ── Динамическое отображение статуса MSS ──────────────
-    local config_path=$(get_config_path)
+    config_path=$(get_config_path)
     if [ -f "$config_path" ]; then
         if are_bad_options_enabled_for_config "$config_path"; then
             echo -e "  ${CYAN}[8]${NC}  ${GREEN}${BOLD}Отключить mss, mss_bulk и synlimit в конфиге telemt${NC}"
