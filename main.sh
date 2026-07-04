@@ -500,6 +500,9 @@ install_syn_fix() {
 
     if [ ${#valid_ports[@]} -eq 0 ]; then
         log_error "Нет корректных портов для установки"
+        echo ""
+        echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
+        read -rsn1
         return 1
     fi
 
@@ -512,7 +515,11 @@ install_syn_fix() {
 
         # ── Проверяем наличие Docker ──────────────────────────
         if ! command -v docker &>/dev/null; then
+            echo ""
             log_error "Docker не установлен. Установите Docker перед использованием этого режима."
+            echo ""
+            echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
+            read -rsn1
             return 1
         fi
 
@@ -549,7 +556,10 @@ install_syn_fix() {
             elif command -v dnf &>/dev/null; then
                 dnf install -y -q nftables
             else
+                echo ""
                 log_error "Не удалось установить nftables автоматически"
+                echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
+                read -rsn1
                 return 1
             fi
         fi
@@ -570,7 +580,6 @@ add chain inet mtpr_synfix input { type filter hook input priority 0; policy acc
 NFT_EOF
 
         if [ "$FIX_TYPE" = "docker_smart" ]; then
-            # ── Smart By-MEKO (nftables) ──────────────────────
             cat >> "$NFT_SCRIPT" << 'SMART_NFT_EOF'
 # 1. iOS по TCP fingerprint → ACCEPT без лимита
 add rule inet mtpr_synfix input tcp dport PORT_HERE tcp flags & (syn|ack) == syn \
@@ -587,7 +596,6 @@ add rule inet mtpr_synfix input tcp dport PORT_HERE tcp flags & (syn|ack) == syn
     counter reject with icmp type host-unreachable comment "other_reject"
 SMART_NFT_EOF
         else
-            # ── Classic (nftables) ────────────────────────────
             cat >> "$NFT_SCRIPT" << 'CLASSIC_NFT_EOF'
 # Classic: 1/second burst 1 для всех
 add rule inet mtpr_synfix input tcp dport PORT_HERE tcp flags & (syn|ack) == syn \
@@ -605,9 +613,15 @@ CLASSIC_NFT_EOF
 
         # Применяем правила
         if /usr/sbin/nft -f "$NFT_SCRIPT" 2>/dev/null; then
+            echo ""
             log_success "NFT правила применены успешно"
         else
+            echo ""
             log_error "Ошибка применения NFT правил"
+            echo "$NFT_SCRIPT"
+            echo ""
+            echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
+            read -rsn1
             return 1
         fi
 
@@ -632,7 +646,11 @@ SERVICE_NFT_EOF
         systemctl enable mtpr-nft-synfix.service 2>/dev/null
         systemctl restart mtpr-nft-synfix.service 2>/dev/null
 
+        echo ""
         log_success "SYN FIX (nftables) успешно установлен на порты: $ports_str"
+        echo ""
+        echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
+        read -rsn1
         return 0
     fi
 
@@ -733,7 +751,11 @@ SERVICE_NFT_EOF
                 systemctl enable mtpr-synfix.service
                 systemctl restart mtpr-synfix.service
                 
+                echo ""
                 log_success "SYN FIX успешно установлен на порты: $ports_str"
+                echo ""
+                echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
+                read -rsn1
             else
                 echo -e "  ${RED}[✗]${NC} Не удалось установить модуль kmod-xt_u32"
                 echo -e "  ${YELLOW}[!]${NC} Попробуйте выбрать старый вариант фикса (TTL+Length)"
@@ -762,7 +784,11 @@ SERVICE_NFT_EOF
         # Всё ок
         systemctl enable mtpr-synfix.service
         systemctl restart mtpr-synfix.service
+        echo ""
         log_success "SYN FIX успешно установлен на порты: $ports_str"
+        echo ""
+        echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
+        read -rsn1
     fi
 }
 
@@ -1142,7 +1168,7 @@ get_online_count() {
 show_header() {
     clear_screen
     echo ""
-    echo -e "  ${BOLD}MTProto Fixer by MEKO v1.51${NC}"
+    echo -e "  ${BOLD}MTProto Fixer by MEKO v1.52${NC}"
     echo -e "  ${DIM}===========================${NC}"
     echo ""
 
