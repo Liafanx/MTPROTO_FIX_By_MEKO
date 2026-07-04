@@ -438,13 +438,18 @@ install_syn_fix() {
         echo ""
         echo -e "  ${BOLD}Выберите тип SYN FIX:${NC}"
         echo -e "  ${GREEN}[1]${NC}  ${BOLD}Новый вариант${NC} (Разделение устройств с помощью u32 по байтам из пакета) — ${GREEN}рекомендуется${NC}"
-		echo -e "${NC}  Если совпало -> это ios и принимаем пакеты без лимита"
-		echo -e "${NC}  Если не совпало -> это другое ус-во и ставим SYN 1/s"
-        echo -e "  ${CYAN}[2]${NC}  ${BOLD}Старый вариант${NC} (Разделение устройств   определяя их TTL+Length)"
-		echo -e "${NC}  Если TTL <65 и length 64 -> это ios и принимаем пакеты без лимита"
-		echo -e "${NC}  Иначе -> это другое ус-во и ставим SYN 1/s"
+        echo -e "${NC}  Если совпало -> это ios и принимаем пакеты без лимита"
+        echo -e "${NC}  Если не совпало -> это другое ус-во и ставим SYN 1/s"
+        echo -e "  ${CYAN}[2]${NC}  ${BOLD}Старый вариант${NC} (Разделение устройств определяя их TTL+Length)"
+        echo -e "${NC}  Если TTL <65 и length 64 -> это ios и принимаем пакеты без лимита"
+        echo -e "${NC}  Иначе -> это другое ус-во и ставим SYN 1/s"
+        echo -e "  ${YELLOW}[3]${NC}  ${BOLD}Docker Smart By-MEKO${NC} (nftables) — ${GREEN}рекомендуется для Docker${NC}"
+        echo -e "${NC}  iOS определяются по TCP fingerprint"
+        echo -e "${NC}  Остальные — лимит 54/minute / REJECT"
+        echo -e "  ${YELLOW}[4]${NC}  ${BOLD}Docker Classic${NC} (nftables)"
+        echo -e "${NC}  Стандартный лимит 1/second burst 1 для всех"
         echo ""
-        echo -en "  ${NC}${BOLD}Ввод (Новый - ${GREEN}${BOLD}1 или enter${NC}${BOLD}, старый - ${RED}${BOLD}2${NC}${BOLD}):${NC} "
+        echo -en "  ${NC}${BOLD}Ввод (Новый - ${GREEN}${BOLD}1 или enter${NC}${BOLD}, старый - ${RED}${BOLD}2${NC}${BOLD}, Docker Smart - ${YELLOW}${BOLD}3${NC}${BOLD}, Docker Classic - ${YELLOW}${BOLD}4${NC}${BOLD}):${NC} "
         read -r fix_choice
 
         if [ -z "$fix_choice" ] || [ "$fix_choice" = "1" ]; then
@@ -453,6 +458,12 @@ install_syn_fix() {
         elif [ "$fix_choice" = "2" ]; then
             FIX_TYPE="old"
             log_info "Выбран старый вариант фикса"
+        elif [ "$fix_choice" = "3" ]; then
+            FIX_TYPE="docker_smart"
+            log_info "Выбран Docker Smart By-MEKO (nftables)"
+        elif [ "$fix_choice" = "4" ]; then
+            FIX_TYPE="docker_classic"
+            log_info "Выбран Docker Classic (nftables)"
         else
             log_warning "Неверный выбор, используем новый вариант"
             FIX_TYPE="new"
@@ -480,6 +491,112 @@ install_syn_fix() {
     log_info "Установка SYN FIX на порты: $ports_str"
     save_port "$ports_str"
 
+    # ── Docker режимы ─────────────────────────────────────────
+    if [ "$FIX_TYPE" = "docker_smart" ] || [ "$FIX_TYPE" = "docker_classic" ]; then
+        log_info "Установка Docker (nftables) режима..."
+        
+        # Проверяем наличие nftables
+        if ! command -v nft &>/dev/null; then
+            log_warning "nftables не установлен, устанавливаю..."
+            if command -v apt-get &>/dev/null; then
+                apt-get update -qq && apt-get install -y -qq nftables
+            elif command -v yum &>/dev/null; then
+                yum install -y -q nftables
+            elif command -v dnf &>/dev/null; then
+                dnf install -y -q nftables
+            else
+                log_error "Не удалось установить nftables автоматически"
+                return 1
+            fi
+        fi
+
+        # Генерируем nftables скрипт
+        local NFT_SCRIPT="/opt/mtpr-simple/mtpr-synfix-nft.sh"
+        local NFT_TABLE="mtpr_synfix"
+        
+        cat > "$NFT_SCRIPT" << 'NFT_EOF'
+#!/usr/bin/env nft -f
+
+delete table inet mtpr_synfix 2>/dev/null
+add table inet mtpr_synfix
+
+# Цепочка для входящего трафика (hook input)
+add chain inet mtpr_synfix input { type filter hook input priority 0; policy accept; }
+
+NFT_EOF
+
+        if [ "$FIX_TYPE" = "docker_smart" ]; then
+            # ── Smart By-MEKO (nftables) ──────────────────────
+            cat >> "$NFT_SCRIPT" << 'SMART_NFT_EOF'
+# 1. iOS по TCP fingerprint → ACCEPT без лимита
+add rule inet mtpr_synfix input tcp dport PORT_HERE tcp flags & (syn|ack) == syn \
+    @th,108,20 0x2ffff @th,160,16 0x204 @th,192,16 0x103 @th,224,24 0x10108 @th,320,32 0x4020000 \
+    counter accept comment "ios_accept"
+
+# 2. iOS превысившие → REJECT (но у нас безусловный ACCEPT, так что сюда не попадают)
+# Оставлено для совместимости
+
+# 3. Все остальные → лимит 54/minute
+add rule inet mtpr_synfix input tcp dport PORT_HERE tcp flags & (syn|ack) == syn \
+    meter mtpr_other { ip saddr timeout 60s limit rate 54/minute burst 1 packets } \
+    counter accept comment "other_accept"
+
+# 4. Превысившие лимит → reject с icmp-host-unreachable
+add rule inet mtpr_synfix input tcp dport PORT_HERE tcp flags & (syn|ack) == syn \
+    counter reject with icmp type host-unreachable comment "other_reject"
+SMART_NFT_EOF
+        else
+            # ── Classic (nftables) ────────────────────────────
+            cat >> "$NFT_SCRIPT" << 'CLASSIC_NFT_EOF'
+# Classic: 1/second burst 1 для всех
+add rule inet mtpr_synfix input tcp dport PORT_HERE tcp flags & (syn|ack) == syn \
+    meter mtpr_classic { ip saddr timeout 60s limit rate 1/second burst 1 packets } \
+    counter drop comment "classic_drop"
+CLASSIC_NFT_EOF
+        fi
+
+        # Подставляем порты в скрипт
+        for port in "${valid_ports[@]}"; do
+            sed -i "s/PORT_HERE/${port}/g" "$NFT_SCRIPT"
+        done
+
+        chmod +x "$NFT_SCRIPT"
+
+        # Применяем правила
+        if /usr/sbin/nft -f "$NFT_SCRIPT" 2>/dev/null; then
+            log_success "NFT правила применены успешно"
+        else
+            log_error "Ошибка применения NFT правил"
+            cat "$NFT_SCRIPT"
+            return 1
+        fi
+
+        # Создаём systemd сервис для nftables
+        cat > /etc/systemd/system/mtpr-nft-synfix.service << 'SERVICE_NFT_EOF'
+[Unit]
+Description=MTProto SYN FIX (nftables) for Telemt/Docker
+After=docker.service network.target
+Wants=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/nft -f /opt/mtpr-simple/mtpr-synfix-nft.sh
+ExecStop=/usr/sbin/nft delete table inet mtpr_synfix
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+SERVICE_NFT_EOF
+
+        systemctl daemon-reload
+        systemctl enable mtpr-nft-synfix.service 2>/dev/null
+        systemctl restart mtpr-nft-synfix.service 2>/dev/null
+
+        log_success "SYN FIX (nftables) успешно установлен на порты: $ports_str"
+        return 0
+    fi
+
+    # ── Старые iptables режимы (1 и 2) ──────────────────────
     if [ "$auto_install" = false ]; then
         echo ""
         log_warning "Будет выполнена установка SYN FIX на порты: $ports_str"
@@ -975,7 +1092,7 @@ get_online_count() {
 show_header() {
     clear_screen
     echo ""
-    echo -e "  ${BOLD}MTProto Fixer by MEKO v1.48${NC}"
+    echo -e "  ${BOLD}MTProto Fixer by MEKO v1.49${NC}"
     echo -e "  ${DIM}===========================${NC}"
     echo ""
 
