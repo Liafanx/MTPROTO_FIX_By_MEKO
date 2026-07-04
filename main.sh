@@ -510,10 +510,10 @@ install_syn_fix() {
     log_info "Установка SYN FIX на порты: $ports_str"
     save_port "$ports_str"
 
-    # ── Docker режимы ─────────────────────────────────────────
+    # ── Docker режимы (nftables) ────────────────────────────
     if [ "$FIX_TYPE" = "docker_smart" ] || [ "$FIX_TYPE" = "docker_classic" ]; then
 
-        # ── Проверяем наличие Docker ──────────────────────────
+        # Проверяем Docker
         if ! command -v docker &>/dev/null; then
             echo ""
             log_error "Docker не установлен. Установите Docker перед использованием этого режима."
@@ -523,9 +523,27 @@ install_syn_fix() {
             return 1
         fi
 
+        # Проверяем nftables
+        if ! command -v nft &>/dev/null; then
+            log_warning "nftables не установлен, устанавливаю..."
+            if command -v apt-get &>/dev/null; then
+                apt-get update -qq && apt-get install -y -qq nftables
+            elif command -v yum &>/dev/null; then
+                yum install -y -q nftables
+            elif command -v dnf &>/dev/null; then
+                dnf install -y -q nftables
+            else
+                echo ""
+                log_error "Не удалось установить nftables автоматически"
+                echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
+                read -rsn1
+                return 1
+            fi
+        fi
+
         if [ "$auto_install" = false ]; then
             echo ""
-            log_warning "Будет выполнена установка SYN FIX (Docker/nftables) на порты: $ports_str"
+            log_warning "Будет выполнена установка SYN FIX (nftables) на порты: $ports_str"
             echo ""
             echo -e "  ${BOLD}Что будет сделано:${NC}"
             echo -e "  • Будет создана таблица nftables ${CYAN}mtpr_synfix${NC}"
@@ -544,115 +562,68 @@ install_syn_fix() {
             fi
         fi
 
-        log_info "Установка Docker (nftables) режима..."
-        
-        # Проверяем наличие nftables
-        if ! command -v nft &>/dev/null; then
-            log_warning "nftables не установлен, устанавливаю..."
-            if command -v apt-get &>/dev/null; then
-                apt-get update -qq && apt-get install -y -qq nftables
-            elif command -v yum &>/dev/null; then
-                yum install -y -q nftables
-            elif command -v dnf &>/dev/null; then
-                dnf install -y -q nftables
-            else
-                echo ""
-                log_error "Не удалось установить nftables автоматически"
-                echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
-                read -rsn1
-                return 1
-            fi
-        fi
+        log_info "Установка nftables режима..."
 
-        # ── Проверяем, работает ли nftables ──────────────────
-        if ! nft list ruleset &>/dev/null; then
-            echo ""
-            log_error "nftables не работает. Возможно, модули ядра не загружены."
-            log_info "Попробуйте: modprobe nft_tables"
-            echo ""
-            echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
-            read -rsn1
-            return 1
-        fi
-
-        # Генерируем nftables скрипт
+        # ── Генерируем скрипт как в реаниматоре ──────────────
         local NFT_SCRIPT="/opt/mtpr-simple/mtpr-synfix-nft.sh"
         local NFT_TABLE="mtpr_synfix"
-        
-        cat > "$NFT_SCRIPT" << 'NFT_EOF'
-#!/usr/bin/env nft -f
 
-delete table inet mtpr_synfix
-add table inet mtpr_synfix
+        # Создаём shell-обёртку (как в реаниматоре)
+        cat > "$NFT_SCRIPT" << 'NFT_WRAPPER_EOF'
+#!/bin/sh
+set -eu
 
-# Цепочка для входящего трафика (hook input)
-add chain inet mtpr_synfix input { type filter hook input priority 0; policy accept; }
+TABLE="mtpr_synfix"
+CHAIN="input"
 
-NFT_EOF
+# Удаляем таблицу если существует
+nft delete table inet "$TABLE" 2>/dev/null || true
+
+# Создаём таблицу и цепочку
+nft add table inet "$TABLE"
+nft "add chain inet $TABLE $CHAIN { type filter hook input priority 0; policy accept; }"
+
+NFT_WRAPPER_EOF
 
         if [ "$FIX_TYPE" = "docker_smart" ]; then
-            cat >> "$NFT_SCRIPT" << 'SMART_NFT_EOF'
+            cat >> "$NFT_SCRIPT" << 'SMART_RULES_EOF'
 # 1. iOS по TCP fingerprint → ACCEPT без лимита
-add rule inet mtpr_synfix input tcp dport PORT_HERE tcp flags & (syn|ack) == syn \
-    @th,108,20 0x2ffff @th,160,16 0x204 @th,192,16 0x103 @th,224,24 0x10108 @th,320,32 0x4020000 \
-    counter accept comment "ios_accept"
+nft "add rule inet mtpr_synfix input tcp dport PORT_HERE tcp flags & (syn|ack) == syn @th,108,20 0x2ffff @th,160,16 0x204 @th,192,16 0x103 @th,224,24 0x10108 @th,320,32 0x4020000 counter accept comment \"ios_accept\""
 
 # 2. Все остальные → лимит 54/minute
-add rule inet mtpr_synfix input tcp dport PORT_HERE tcp flags & (syn|ack) == syn \
-    meter mtpr_other { ip saddr timeout 60s limit rate 54/minute burst 1 packets } \
-    counter accept comment "other_accept"
+nft "add rule inet mtpr_synfix input tcp dport PORT_HERE tcp flags & (syn|ack) == syn meter mtpr_other { ip saddr timeout 60s limit rate 54/minute burst 1 packets } counter accept comment \"other_accept\""
 
 # 3. Превысившие лимит → reject с icmp-host-unreachable
-add rule inet mtpr_synfix input tcp dport PORT_HERE tcp flags & (syn|ack) == syn \
-    counter reject with icmp type host-unreachable comment "other_reject"
-SMART_NFT_EOF
+nft "add rule inet mtpr_synfix input tcp dport PORT_HERE tcp flags & (syn|ack) == syn counter reject with icmp type host-unreachable comment \"other_reject\""
+SMART_RULES_EOF
         else
-            cat >> "$NFT_SCRIPT" << 'CLASSIC_NFT_EOF'
+            cat >> "$NFT_SCRIPT" << 'CLASSIC_RULES_EOF'
 # Classic: 1/second burst 1 для всех
-add rule inet mtpr_synfix input tcp dport PORT_HERE tcp flags & (syn|ack) == syn \
-    meter mtpr_classic { ip saddr timeout 60s limit rate 1/second burst 1 packets } \
-    counter drop comment "classic_drop"
-CLASSIC_NFT_EOF
+nft "add rule inet mtpr_synfix input tcp dport PORT_HERE tcp flags & (syn|ack) == syn meter mtpr_classic { ip saddr timeout 60s limit rate 1/second burst 1 packets } counter drop comment \"classic_drop\""
+CLASSIC_RULES_EOF
         fi
 
-        # Подставляем порты в скрипт
+        # Подставляем порты
         for port in "${valid_ports[@]}"; do
             sed -i "s/PORT_HERE/${port}/g" "$NFT_SCRIPT"
         done
 
         chmod +x "$NFT_SCRIPT"
 
-        # ── Применяем правила с обёрткой для старых nftables ──
-        local nft_output
-        local nft_exit_code
-        
-        # Удаляем таблицу если существует (через shell, а не внутри nft)
-        nft delete table inet mtpr_synfix 2>/dev/null || true
-        
-        # Применяем скрипт
-        nft_output=$(/usr/sbin/nft -f "$NFT_SCRIPT" 2>&1)
-        nft_exit_code=$?
-
-        if [ $nft_exit_code -eq 0 ]; then
+        # Применяем скрипт (как в реаниматоре)
+        if /bin/sh "$NFT_SCRIPT"; then
             echo ""
             log_success "NFT правила применены успешно"
         else
             echo ""
-            log_error "Ошибка применения NFT правил:"
-            echo ""
-            echo -e "  ${RED}${nft_output}${NC}"
-            echo ""
-            echo -e "  ${YELLOW}Возможные причины:${NC}"
-            echo -e "  ${DIM}• Ядро не поддерживает nftables${NC}"
-            echo -e "  ${DIM}• Не загружены модули ядра (nft_tables, nft_chain_nat, etc.)${NC}"
-            echo -e "  ${DIM}• Версия nftables слишком старая${NC}"
+            log_error "Ошибка применения NFT правил"
             echo ""
             echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
             read -rsn1
             return 1
         fi
 
-        # Создаём systemd сервис для nftables
+        # Создаём systemd сервис (как в реаниматоре)
         cat > /etc/systemd/system/mtpr-nft-synfix.service << 'SERVICE_NFT_EOF'
 [Unit]
 Description=MTProto SYN FIX (nftables) for Telemt/Docker
@@ -662,8 +633,8 @@ Wants=docker.service
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/usr/sbin/nft -f /opt/mtpr-simple/mtpr-synfix-nft.sh
-ExecStop=/usr/sbin/nft delete table inet mtpr_synfix
+ExecStart=/bin/sh /opt/mtpr-simple/mtpr-synfix-nft.sh
+ExecStop=/bin/sh -c '/usr/sbin/nft delete table inet mtpr_synfix 2>/dev/null || true'
 
 [Install]
 WantedBy=multi-user.target
@@ -747,7 +718,6 @@ SERVICE_NFT_EOF
             echo -e "  ${BLUE}[i]${NC} Обнаружена версия AlmaLinux: ${ALMA_VERSION}"
             echo ""
             
-            # Выбираем правильный пакет elrepo-release в зависимости от версии
             local ELREPO_URL=""
             if [ "$ALMA_VERSION" = "10" ]; then
                 ELREPO_URL="https://www.elrepo.org/elrepo-release-10.el10.elrepo.noarch.rpm"
@@ -773,7 +743,6 @@ SERVICE_NFT_EOF
                 log_info "Повторная попытка применения правил..."
                 echo ""
                 
-                # Повторно применяем правила
                 PORT="$ports_str" /opt/mtpr-simple/apply-mtpr-synfix.sh
                 systemctl enable mtpr-synfix.service
                 systemctl restart mtpr-synfix.service
@@ -799,7 +768,6 @@ SERVICE_NFT_EOF
             return 1
         fi
     elif [ $apply_exit_code -ne 0 ]; then
-        # Другая ошибка
         echo ""
         log_error "Ошибка применения правил iptables:"
         echo "$apply_output"
@@ -808,7 +776,6 @@ SERVICE_NFT_EOF
         read -rsn1
         return 1
     else
-        # Всё ок
         systemctl enable mtpr-synfix.service
         systemctl restart mtpr-synfix.service
         echo ""
@@ -1195,7 +1162,7 @@ get_online_count() {
 show_header() {
     clear_screen
     echo ""
-    echo -e "  ${BOLD}MTProto Fixer by MEKO v1.54${NC}"
+    echo -e "  ${BOLD}MTProto Fixer by MEKO v1.55${NC}"
     echo -e "  ${DIM}===========================${NC}"
     echo ""
 
