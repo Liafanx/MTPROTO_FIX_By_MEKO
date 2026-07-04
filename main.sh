@@ -1261,7 +1261,7 @@ main_menu() {
 
         echo -e "  ${CYAN}[1]${NC}  $item1"
         echo -e "  ${CYAN}[2]${NC}  $item2_text"
-        echo -e "  ${CYAN}[3]${NC}  ${NC}${BOLD}Меню прокси и кфг${NC}"
+        echo -e "  ${CYAN}[3]${NC}  ${NC}${BOLD}Меню прокси и конфигов${NC}"
         echo -e "  ${CYAN}[4]${NC}  ${NC}${BOLD}Обновить скрипт${NC}"
         echo -e "  ${CYAN}[5]${NC}  ${NC}${BOLD}Проверить доступ к сайтам с сервера(тг,ютуб,инст, и тд.)${NC}"
         echo -e "  ${CYAN}[6]${NC}  ${NC}${BOLD}Проверить домен/прокси на ios-валидность${YELLOW}${BOLD}(Необходим: OpenSSL 3.5+)  ${NC}"
