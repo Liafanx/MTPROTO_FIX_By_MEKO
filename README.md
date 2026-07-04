@@ -173,7 +173,7 @@ Gn7w3EBkZqPjPDcbkTaxspip42TuhoGqaaEqHAxhG9V1
 [<img width="300" height="300" alt="MEKO bot" src="https://github.com/user-attachments/assets/8db41a95-79f2-40d6-9777-50b6ffb6fa48" />](https://t.me/projectmeko_bot)
 
 
-<a href="https://star-history.com/#Mekotofeuka/MTPROTO_FIX_By_MEKO&Date">
+<a href="https://star-history.com/#Mekotofeuka/MTPROTO_FIX_By_MEKO&Date"> 
  <picture>
    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=Mekotofeuka/MTPROTO_FIX_By_MEKO&type=Date&theme=dark" />
    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=Mekotofeuka/MTPROTO_FIX_By_MEKO&type=Date" />
