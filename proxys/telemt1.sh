@@ -593,6 +593,22 @@ install_telemt() {
     read -rsn1
 }
 
+# ── Функция установки Telemt в Docker ───────────────────────
+install_telemt_docker() {
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    DOCKER_SCRIPT="$SCRIPT_DIR/telemt_in_docker1.sh"
+    
+    if [ -f "$DOCKER_SCRIPT" ]; then
+        chmod +x "$DOCKER_SCRIPT"
+        exec "$DOCKER_SCRIPT"
+    else
+        echo ""
+        echo -e "  ${RED}[✗]${NC} Файл $DOCKER_SCRIPT не найден"
+        echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
+        read -rsn1
+    fi
+}
+
 # ── Функция удаления Telemt ──────────────────────────────────
 purge_telemt() {
     echo ""
@@ -919,7 +935,7 @@ manage_mss() {
 while true; do
     clear
     echo ""
-    echo -e "  ${BOLD}Telemt меню v0.63${NC}"
+    echo -e "  ${BOLD}Telemt меню v0.70${NC}"
     echo -e "  ${DIM}===========================${NC}"
     
     # Показываем информацию о Telemt, если установлен
@@ -974,25 +990,26 @@ while true; do
     fi
     
     echo -e "  ${CYAN}[1]${NC}  ${BOLD}Установить/обновить/откатить Telemt${NC}"
-    echo -e "  ${CYAN}[2]${NC}  ${BOLD}Открыть конфиг Telemt${NC}"
-    echo -e "  ${CYAN}[3]${NC}  ${BOLD}Перезапустить Telemt${NC}"
-    echo -e "  ${CYAN}[4]${NC}  ${BOLD}Обновить путь к конфигу Telemt${NC}"
-    echo -e "  ${CYAN}[5]${NC}  ${BOLD}Посмотреть логи Telemt${NC}"
-    echo -e "  ${CYAN}[6]${NC}  ${BOLD}Вывести ссылку на подключение для пользователя${NC}"
+    echo -e "  ${CYAN}[2]${NC}  ${BOLD}Установить Telemt в Docker${NC}"
+    echo -e "  ${CYAN}[3]${NC}  ${BOLD}Открыть конфиг Telemt${NC}"
+    echo -e "  ${CYAN}[4]${NC}  ${BOLD}Перезапустить Telemt${NC}"
+    echo -e "  ${CYAN}[5]${NC}  ${BOLD}Обновить путь к конфигу Telemt${NC}"
+    echo -e "  ${CYAN}[6]${NC}  ${BOLD}Посмотреть логи Telemt${NC}"
+    echo -e "  ${CYAN}[7]${NC}  ${BOLD}Вывести ссылку на подключение для пользователя${NC}"
     
     # ── Динамическое отображение статуса MSS в меню ──────
     config_path=$(get_config_path)
     if [ -f "$config_path" ]; then
         if are_bad_options_enabled_for_config "$config_path"; then
-            echo -e "  ${CYAN}[8]${NC}  ${GREEN}${BOLD}Отключить mss, mss_bulk и synlimit в конфиге telemt${NC}"
+            echo -e "  ${CYAN}[9]${NC}  ${GREEN}${BOLD}Отключить mss, mss_bulk и synlimit в конфиге telemt${NC}"
         else
-            echo -e "  ${CYAN}[8]${NC}  ${BOLD}Включить mss и mss_bulk в конфиге telemt${RED} (не рекомендуется)${NC}"
+            echo -e "  ${CYAN}[9]${NC}  ${BOLD}Включить mss и mss_bulk в конфиге telemt${RED} (не рекомендуется)${NC}"
         fi
     else
-        echo -e "  ${CYAN}[8]${NC}  ${BOLD}Управление MSS в конфиге${NC} ${DIM}(client_mss, mss_bulk, synlimit)${NC}"
+        echo -e "  ${CYAN}[9]${NC}  ${BOLD}Управление MSS в конфиге${NC} ${DIM}(client_mss, mss_bulk, synlimit)${NC}"
     fi
     
-    echo -e "  ${RED}[7]${NC}  ${BOLD}Удалить Telemt${NC}"
+    echo -e "  ${RED}[8]${NC}  ${BOLD}Удалить Telemt${NC}"
     echo -e "  ${CYAN}[0]${NC}  ${BOLD}Назад в прокси меню${NC}"
     echo ""
     
@@ -1013,24 +1030,27 @@ while true; do
             install_telemt
             ;;
         2)
-            edit_config
+            install_telemt_docker
             ;;
         3)
-            restart_telemt
+            edit_config
             ;;
         4)
-            update_config_path
+            restart_telemt
             ;;
         5)
-            view_logs
+            update_config_path
             ;;
         6)
-            find_user_link
+            view_logs
             ;;
         7)
-            purge_telemt
+            find_user_link
             ;;
         8)
+            purge_telemt
+            ;;
+        9)
             manage_mss
             ;;
         0)
