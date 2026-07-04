@@ -609,10 +609,10 @@ install_telemt_docker() {
     fi
 }
 
-# ── Функция удаления Telemt ──────────────────────────────────
+# ── Функция удаления Telemt (стандартный) ────────────────────
 purge_telemt() {
     echo ""
-    echo -e "  ${RED}${BOLD}ВНИМАНИЕ:${NC} Будет выполнено полное удаление Telemt!"
+    echo -e "  ${RED}${BOLD}ВНИМАНИЕ:${NC} Будет выполнено полное удаление стандартного Telemt!"
     echo ""
     echo -e "  ${BOLD}Будут удалены:${NC}"
     echo -e "  • Все файлы Telemt"
@@ -645,6 +645,133 @@ purge_telemt() {
     echo ""
     echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
     read -rsn1
+}
+
+# ── Функция удаления Telemt из Docker ────────────────────────
+purge_telemt_docker() {
+    echo ""
+    echo -e "  ${RED}${BOLD}ВНИМАНИЕ:${NC} Будет выполнено полное удаление Telemt из Docker!"
+    echo ""
+    echo -e "  ${BOLD}Будут удалены:${NC}"
+    echo -e "  • Контейнеры Telemt и Watchtower"
+    echo -e "  • Папка проекта (по умолчанию: /root/telemt)"
+    echo -e "  • Образы Telemt и Watchtower"
+    echo -e "  • Все неиспользуемые образы, контейнеры и сети"
+    echo ""
+    echo -e "  ${YELLOW}[!]${NC} Это действие нельзя отменить!"
+    
+    # Определяем путь к папке telemt
+    local TELEMT_PATH="/root/telemt"
+    if [ -d "$TELEMT_PATH" ]; then
+        echo -e "  ${DIM}Обнаружена папка: ${TELEMT_PATH}${NC}"
+    else
+        echo -e "  ${YELLOW}[!]${NC} Папка $TELEMT_PATH не найдена"
+        echo -en "  ${BOLD}Удалять всё равно? [y/N]:${NC} "
+        read -r force_remove
+        if [[ ! "$force_remove" =~ ^[yY]$ ]]; then
+            echo -e "  ${GRAY}Удаление отменено${NC}"
+            echo ""
+            echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
+            read -rsn1
+            return 1
+        fi
+    fi
+    
+    echo ""
+    echo -en "  ${BOLD}Продолжить удаление? [y/N]:${NC} "
+    local confirm
+    read -r confirm
+
+    if [[ ! "$confirm" =~ ^[yY]$ ]]; then
+        echo -e "  ${GRAY}Удаление отменено${NC}"
+        echo ""
+        echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
+        read -rsn1
+        return 1
+    fi
+
+    echo ""
+    echo -e "  ${BLUE}[i]${NC} Удаление Telemt из Docker..."
+    echo ""
+    
+    # 1. Останавливаем и удаляем контейнеры
+    if [ -f "$TELEMT_PATH/docker-compose.yml" ]; then
+        echo -e "  ${BLUE}[i]${NC} Остановка и удаление контейнеров..."
+        cd "$TELEMT_PATH" && docker compose down -v 2>/dev/null || echo -e "  ${YELLOW}[!]${NC} Контейнеры не найдены или уже удалены"
+    else
+        echo -e "  ${YELLOW}[!]${NC} docker-compose.yml не найден, пропускаем остановку контейнеров"
+    fi
+    
+    # 2. Удаляем папку с проектом
+    echo -e "  ${BLUE}[i]${NC} Удаление папки $TELEMT_PATH..."
+    if [ -d "$TELEMT_PATH" ]; then
+        cd /root && rm -rf "$TELEMT_PATH"
+        echo -e "  ${GREEN}[✓]${NC} Папка удалена"
+    else
+        echo -e "  ${YELLOW}[!]${NC} Папка не найдена"
+    fi
+    
+    # 3. Удаляем образы
+    echo -e "  ${BLUE}[i]${NC} Удаление образов..."
+    docker rmi ghcr.io/telemt/telemt:* 2>/dev/null || echo -e "  ${YELLOW}[!]${NC} Образ Telemt не найден"
+    docker rmi containrrr/watchtower 2>/dev/null || echo -e "  ${YELLOW}[!]${NC} Образ Watchtower не найден"
+    
+    # 4. Чистим неиспользуемые образы, контейнеры, сети
+    echo -e "  ${BLUE}[i]${NC} Очистка неиспользуемых ресурсов Docker..."
+    echo -e "  ${DIM}Будут удалены все неиспользуемые образы, контейнеры и сети${NC}"
+    echo -en "  ${BOLD}Выполнить очистку? [y/N]:${NC} "
+    read -r prune_confirm
+    if [[ -z "$prune_confirm" || "$prune_confirm" =~ ^[yY]$ ]]; then
+        docker system prune -af
+        echo -e "  ${GREEN}[✓]${NC} Очистка выполнена"
+    else
+        echo -e "  ${GRAY}Очистка пропущена${NC}"
+    fi
+    
+    # 5. Проверяем что ничего не осталось
+    echo ""
+    echo -e "  ${BLUE}[i]${NC} Проверка остатков..."
+    echo -e "  ${BOLD}Контейнеры:${NC}"
+    docker ps -a | grep telemt || echo -e "  ${GRAY}Контейнеров Telemt не найдено${NC}"
+    echo ""
+    echo -e "  ${BOLD}Образы:${NC}"
+    docker images | grep telemt || echo -e "  ${GRAY}Образов Telemt не найдено${NC}"
+    
+    echo ""
+    echo -e "  ${GREEN}[✓]${NC} Telemt из Docker успешно удалён!"
+    echo ""
+    echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
+    read -rsn1
+}
+
+# ── Функция выбора удаления ──────────────────────────────────
+purge_telemt_menu() {
+    echo ""
+    echo -e "  ${BOLD}УДАЛЕНИЕ TELEMT${NC}"
+    echo -e "  ${DIM}===========================${NC}"
+    echo ""
+    echo -e "  ${CYAN}[1]${NC}  ${BOLD}Удалить стандартный Telemt${NC}"
+    echo -e "  ${CYAN}[2]${NC}  ${BOLD}Удалить Telemt из Docker${NC}"
+    echo -e "  ${CYAN}[0]${NC}  ${BOLD}Назад${NC}"
+    echo ""
+    echo -en "  ${BOLD}Выбор:${NC} "
+    read -r purge_choice
+    
+    case "$purge_choice" in
+        1)
+            purge_telemt
+            ;;
+        2)
+            purge_telemt_docker
+            ;;
+        0)
+            return 0
+            ;;
+        *)
+            echo "  Неверный выбор"
+            sleep 0.5
+            ;;
+    esac
 }
 
 # ── Функция открытия конфига ────────────────────────────────
@@ -935,7 +1062,7 @@ manage_mss() {
 while true; do
     clear
     echo ""
-    echo -e "  ${BOLD}Telemt меню v0.73${NC}"
+    echo -e "  ${BOLD}Telemt меню v0.74${NC}"
     echo -e "  ${DIM}===========================${NC}"
     
     # Показываем информацию о Telemt, если установлен
@@ -996,20 +1123,20 @@ while true; do
     echo -e "  ${CYAN}[5]${NC}  ${BOLD}Обновить путь к конфигу Telemt${NC}"
     echo -e "  ${CYAN}[6]${NC}  ${BOLD}Посмотреть логи Telemt${NC}"
     echo -e "  ${CYAN}[7]${NC}  ${BOLD}Вывести ссылку на подключение для пользователя${NC}"
-    echo -e "  ${RED}[8]${NC}  ${BOLD}Удалить Telemt${NC}"
     
     # ── Динамическое отображение статуса MSS в меню ──────
     config_path=$(get_config_path)
     if [ -f "$config_path" ]; then
         if are_bad_options_enabled_for_config "$config_path"; then
-            echo -e "  ${CYAN}[9]${NC}  ${GREEN}${BOLD}Отключить mss, mss_bulk и synlimit в конфиге telemt${NC}"
+            echo -e "  ${CYAN}[8]${NC}  ${GREEN}${BOLD}Отключить mss, mss_bulk и synlimit в конфиге telemt${NC}"
         else
-            echo -e "  ${CYAN}[9]${NC}  ${BOLD}Включить mss и mss_bulk в конфиге telemt${RED} (не рекомендуется)${NC}"
+            echo -e "  ${CYAN}[8]${NC}  ${BOLD}Включить mss и mss_bulk в конфиге telemt${RED} (не рекомендуется)${NC}"
         fi
     else
-        echo -e "  ${CYAN}[9]${NC}  ${BOLD}Управление MSS в конфиге${NC} ${DIM}(client_mss, mss_bulk, synlimit)${NC}"
+        echo -e "  ${CYAN}[8]${NC}  ${BOLD}Управление MSS в конфиге${NC} ${DIM}(client_mss, mss_bulk, synlimit)${NC}"
     fi
     
+    echo -e "  ${RED}[9]${NC}  ${BOLD}Удалить Telemt${NC}"
     echo -e "  ${CYAN}[0]${NC}  ${BOLD}Назад в прокси меню${NC}"
     echo ""
     
@@ -1048,10 +1175,10 @@ while true; do
             find_user_link
             ;;
         8)
-            purge_telemt
+            manage_mss
             ;;
         9)
-            manage_mss
+            purge_telemt_menu
             ;;
         0)
             exec /opt/mtpr-simple/proxys/proxymenu.sh
