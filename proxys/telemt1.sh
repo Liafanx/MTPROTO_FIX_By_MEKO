@@ -919,7 +919,7 @@ manage_mss() {
 while true; do
     clear
     echo ""
-    echo -e "  ${BOLD}Telemt меню v0.6${NC}"
+    echo -e "  ${BOLD}Telemt меню v0.61${NC}"
     echo -e "  ${DIM}===========================${NC}"
     
     # Показываем информацию о Telemt, если установлен
@@ -961,7 +961,19 @@ while true; do
     echo -e "  ${CYAN}[4]${NC}  ${BOLD}Обновить путь к конфигу Telemt${NC}"
     echo -e "  ${CYAN}[5]${NC}  ${BOLD}Посмотреть логи Telemt${NC}"
     echo -e "  ${CYAN}[6]${NC}  ${BOLD}Вывести ссылку на подключение для пользователя${NC}"
-    echo -e "  ${CYAN}[8]${NC}  ${BOLD}Управление MSS в конфиге${NC} ${DIM}(client_mss, mss_bulk, synlimit)${NC}"
+    
+    # ── Динамическое отображение статуса MSS ──────────────
+    local config_path=$(get_config_path)
+    if [ -f "$config_path" ]; then
+        if are_bad_options_enabled_for_config "$config_path"; then
+            echo -e "  ${CYAN}[8]${NC}  ${GREEN}${BOLD}Отключить mss, mss_bulk и synlimit в конфиге telemt${NC}"
+        else
+            echo -e "  ${CYAN}[8]${NC}  ${BOLD}Включить mss и mss_bulk в конфиге telemt${RED} (не рекомендуется)${NC}"
+        fi
+    else
+        echo -e "  ${CYAN}[8]${NC}  ${BOLD}Управление MSS в конфиге${NC} ${DIM}(client_mss, mss_bulk, synlimit)${NC}"
+    fi
+    
     echo -e "  ${RED}[7]${NC}  ${BOLD}Удалить Telemt${NC}"
     echo -e "  ${CYAN}[0]${NC}  ${BOLD}Назад в прокси меню${NC}"
     echo ""
