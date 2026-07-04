@@ -38,7 +38,7 @@ fi
 # ── Проверка Docker ──────────────────────────────────────────
 if ! command -v docker &>/dev/null; then
     log_warning "Docker не установлен"
-    echo -en "  ${BOLD}Установить Docker? [Y/n]:${NC} "
+    echo -en "  ${BOLD}Установить Docker? Y/n:${NC} "
     read -r install_docker
     if [[ -z "$install_docker" || "$install_docker" =~ ^[yY]$ ]]; then
         log_info "Установка Docker..."
@@ -47,33 +47,33 @@ if ! command -v docker &>/dev/null; then
         log_info "Установка отменена"
         echo -e "  ${GRAY}Нажмите любую клавишу для возврата...${NC}"
         read -rsn1
-        exit 0
+        return 0
     fi
 fi
 
 # ── Заголовок ─────────────────────────────────────────────────
 clear
 echo ""
-echo -e "  ${BOLD}УСТАНОВКА TELEMT В DOCKER$ v0.1{NC}"
+echo -e "  ${BOLD}УСТАНОВКА TELEMT В DOCKER v0.2${NC}"
 echo -e "  ${DIM}================================${NC}"
 echo ""
 echo -e "  Будет установлен Telemt ${GREEN}${TELEMT_VERSION}${NC} в Docker контейнере"
 echo -e "  ${DIM}Версия: ${TELEMT_VERSION}${NC}"
 echo ""
-echo -en "  ${BOLD}Продолжить установку? [Y/n]:${NC} "
+echo -en "  ${BOLD}Продолжить установку? Y/n:${NC} "
 read -r confirm
 if [[ -n "$confirm" && "$confirm" =~ ^[nN]$ ]]; then
     log_info "Установка отменена"
     echo -e "  ${GRAY}Нажмите любую клавишу для возврата...${NC}"
     read -rsn1
-    exit 0
+    return 0
 fi
 
 # ── 1) Автозапуск Docker ─────────────────────────────────────
 echo ""
 echo -e "  ${BOLD}1. Включить автозапуск Docker при старте системы?${NC}"
 echo -e "  ${DIM}(systemctl enable docker && systemctl start docker)${NC}"
-echo -en "  ${BOLD}Включить? [Y/n]:${NC} "
+echo -en "  ${BOLD}Включить? Y/n:${NC} "
 read -r docker_autostart
 if [[ -z "$docker_autostart" || "$docker_autostart" =~ ^[yY]$ ]]; then
     log_info "Включение автозапуска Docker..."
@@ -87,7 +87,7 @@ fi
 echo ""
 echo -e "  ${BOLD}2. Путь установки Telemt${NC}"
 echo -e "  ${DIM}По умолчанию: /root/telemt${NC}"
-echo -en "  ${BOLD}Введите путь или нажмите Enter для стандартного:${NC} "
+echo -en "  ${BOLD}Введите путь или нажмите Enter для выбора стандартного:${NC} "
 read -r install_path
 if [ -z "$install_path" ]; then
     install_path="/root/telemt"
@@ -98,8 +98,7 @@ log_info "Путь: $install_path"
 echo ""
 echo -e "  ${BOLD}3. Порт для прокси${NC}"
 echo -e "  ${DIM}По умолчанию: 443${NC}"
-echo -e "  ${DIM}Рекомендуется: 443 (стандартный) или 8443, 9443${NC}"
-echo -en "  ${BOLD}Введите порт или нажмите Enter для 443:${NC} "
+echo -en "  ${BOLD}Введите порт или нажмите Enter для выбора порта поумолчанию:${NC} "
 read -r port_input
 if [ -z "$port_input" ]; then
     port="443"
@@ -111,37 +110,55 @@ else
 fi
 echo -e "  ${GREEN}✓${NC} Использован порт: ${CYAN}${port}${NC}"
 
-# ── 4) Секрет ─────────────────────────────────────────────────
+# ── 4) Секрет (с циклом) ─────────────────────────────────────
 echo ""
 echo -e "  ${BOLD}4. Секрет для доступа к прокси${NC}"
-# Генерируем секрет
-SECRET=$(openssl rand -hex 16)
-echo -e "  ${DIM}Сгенерирован секрет: ${CYAN}${SECRET}${NC}"
-echo ""
-echo -e "  ${BOLD}Варианты:${NC}"
-echo -e "  ${GREEN}[Enter/Y]${NC} — использовать сгенерированный секрет"
-echo -e "  ${CYAN}[ввести вручную]${NC} — указать свой секрет"
-echo -e "  ${RED}[gen]${NC} — перегенерировать новый секрет"
-echo ""
-echo -en "  ${BOLD}Ваш выбор:${NC} "
-read -r secret_input
 
-if [[ "$secret_input" =~ ^[Gg][Ee][Nn]$ ]]; then
-    SECRET=$(openssl rand -hex 16)
-    echo -e "  ${GREEN}✓${NC} Новый секрет: ${CYAN}${SECRET}${NC}"
-elif [[ -n "$secret_input" ]] && [[ ! "$secret_input" =~ ^[yY]$ ]]; then
-    SECRET="$secret_input"
-    echo -e "  ${GREEN}✓${NC} Использован секрет: ${CYAN}${SECRET}${NC}"
-else
-    echo -e "  ${GREEN}✓${NC} Использован сгенерированный секрет: ${CYAN}${SECRET}${NC}"
-fi
+SECRET=""
+while true; do
+    # Генерируем секрет при первом проходе или при gen
+    if [ -z "$SECRET" ]; then
+        SECRET=$(openssl rand -hex 16)
+    fi
+    
+    echo -e "  ${DIM}Сгенерирован секрет: ${CYAN}${SECRET}${NC}"
+    echo ""
+    echo -e "  ${BOLD}Варианты:${NC}"
+    echo -e "  ${GREEN}Enter/Y${NC} — использовать сгенерированный секрет"
+    echo -e "  ${CYAN}Ввести вручную${NC} — указать свой секрет"
+    echo -e "  ${RED}gen${NC} — перегенерировать новый секрет"
+    echo ""
+    echo -en "  ${BOLD}Ваш выбор:${NC} "
+    read -r secret_input
+    
+    if [[ "$secret_input" =~ ^[Gg][Ee][Nn]$ ]]; then
+        SECRET=$(openssl rand -hex 16)
+        echo ""
+        echo -e "  ${GREEN}✓${NC} Новый секрет: ${CYAN}${SECRET}${NC}"
+        echo ""
+        # Показываем меню снова с новым секретом
+        continue
+    elif [[ -n "$secret_input" ]] && [[ ! "$secret_input" =~ ^[yY]$ ]] && [[ -z "$secret_input" ]]; then
+        # Ввели что-то кроме gen, enter, y, Y
+        SECRET="$secret_input"
+        echo ""
+        echo -e "  ${GREEN}✓${NC} Использован секрет: ${CYAN}${SECRET}${NC}"
+        echo ""
+        break
+    else
+        # Enter или y/Y
+        echo ""
+        echo -e "  ${GREEN}✓${NC} Использован сгенерированный секрет: ${CYAN}${SECRET}${NC}"
+        echo ""
+        break
+    fi
+done
 
 # ── 5) TLS домен ─────────────────────────────────────────────
 echo ""
 echo -e "  ${BOLD}5. TLS домен для маскировки${NC}"
 echo -e "  ${DIM}По умолчанию: rutube.ru${NC}"
-echo -e "  ${DIM}Рекомендуемые: rutube.ru, ozon.ru, wb.ru, cloudflare.com${NC}"
-echo -en "  ${BOLD}Введите домен или нажмите Enter для rutube.ru:${NC} "
+echo -en "  ${BOLD}Введите домен или нажмите Enter для выбора rutube.ru:${NC} "
 read -r tls_domain_input
 if [ -z "$tls_domain_input" ]; then
     tls_domain="rutube.ru"
@@ -291,4 +308,4 @@ echo ""
 
 echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
 read -rsn1
-exit 0
+return 0
