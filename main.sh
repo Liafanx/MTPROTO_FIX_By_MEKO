@@ -564,6 +564,17 @@ install_syn_fix() {
             fi
         fi
 
+        # ── Проверяем, работает ли nftables ──────────────────
+        if ! nft list ruleset &>/dev/null; then
+            echo ""
+            log_error "nftables не работает. Возможно, модули ядра не загружены."
+            log_info "Попробуйте: modprobe nft_tables"
+            echo ""
+            echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
+            read -rsn1
+            return 1
+        fi
+
         # Генерируем nftables скрипт
         local NFT_SCRIPT="/opt/mtpr-simple/mtpr-synfix-nft.sh"
         local NFT_TABLE="mtpr_synfix"
@@ -611,14 +622,26 @@ CLASSIC_NFT_EOF
 
         chmod +x "$NFT_SCRIPT"
 
-        # Применяем правила
-        if /usr/sbin/nft -f "$NFT_SCRIPT" 2>/dev/null; then
+        # ── Применяем правила с выводом ошибки ──────────────
+        local nft_output
+        local nft_exit_code
+        nft_output=$(/usr/sbin/nft -f "$NFT_SCRIPT" 2>&1)
+        nft_exit_code=$?
+
+        if [ $nft_exit_code -eq 0 ]; then
             echo ""
             log_success "NFT правила применены успешно"
         else
             echo ""
-            log_error "Ошибка применения NFT правил"
-            echo "$NFT_SCRIPT"
+            log_error "Ошибка применения NFT правил:"
+            echo ""
+            echo -e "  ${RED}${nft_output}${NC}"
+            echo ""
+            echo -e "  ${YELLOW}Возможные причины:${NC}"
+            echo -e "  ${DIM}• Ядро не поддерживает nftables${NC}"
+            echo -e "  ${DIM}• Не загружены модули ядра (nft_tables, nft_chain_nat, etc.)${NC}"
+            echo -e "  ${DIM}• Версия nftables слишком старая${NC}"
+            echo -e "  ${DIM}• Используйте iptables режимы (1 или 2) вместо Docker режимов${NC}"
             echo ""
             echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
             read -rsn1
@@ -1168,7 +1191,7 @@ get_online_count() {
 show_header() {
     clear_screen
     echo ""
-    echo -e "  ${BOLD}MTProto Fixer by MEKO v1.52${NC}"
+    echo -e "  ${BOLD}MTProto Fixer by MEKO v1.53${NC}"
     echo -e "  ${DIM}===========================${NC}"
     echo ""
 
