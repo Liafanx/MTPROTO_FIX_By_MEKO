@@ -277,8 +277,7 @@ echo ""
 echo -e "  ${BOLD}ССЫЛКА ДЛЯ ПОДКЛЮЧЕНИЯ В TELEGRAM:${NC}"
 echo ""
 
-# Ждём немного пока контейнер поднимется
-sleep 3
+sleep 1
 
 # Пробуем получить ссылку
 LINK=$(curl -s http://localhost:9091/v1/users 2>/dev/null | jq -r '.data[].links.tls[]' 2>/dev/null | grep -v "::" | grep -v "0.0.0.0" | head -1)
