@@ -692,11 +692,217 @@ restart_telemt() {
     read -rsn1
 }
 
+# ── Функция управления MSS, mss_bulk и synlimit ────────────
+# ── Функция проверки MSS в конфиге ──────────────────────────
+is_mss_enabled_for_config() {
+    local _cfg="$1"
+    _cfg=$(trim "$_cfg")
+    if [ -z "$_cfg" ] || [ ! -f "$_cfg" ]; then
+        return 1
+    fi
+    if grep -E '^[[:space:]]*client_mss[[:space:]]*=' "$_cfg" | grep -v '^#' | grep -q .; then
+        return 0
+    fi
+    return 1
+}
+
+is_mss_bulk_enabled_for_config() {
+    local _cfg="$1"
+    _cfg=$(trim "$_cfg")
+    if [ -z "$_cfg" ] || [ ! -f "$_cfg" ]; then
+        return 1
+    fi
+    if grep -E '^[[:space:]]*mss_bulk[[:space:]]*=' "$_cfg" | grep -v '^#' | grep -q .; then
+        return 0
+    fi
+    return 1
+}
+
+is_synlimit_enabled_for_config() {
+    local _cfg="$1"
+    _cfg=$(trim "$_cfg")
+    if [ -z "$_cfg" ] || [ ! -f "$_cfg" ]; then
+        return 1
+    fi
+    if grep -E '^[[:space:]]*synlimit[[:space:]]*=' "$_cfg" | grep -v '^#' | grep -q .; then
+        return 0
+    fi
+    return 1
+}
+
+are_bad_options_enabled_for_config() {
+    local _cfg="$1"
+    if is_mss_enabled_for_config "$_cfg" || is_mss_bulk_enabled_for_config "$_cfg" || is_synlimit_enabled_for_config "$_cfg"; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# ── ВКЛЮЧЕНИЕ MSS И MSS_BULK ───────────────────────────────
+enable_mss_options() {
+    local config_path=$(get_config_path)
+    if [ -z "$config_path" ] || [ ! -f "$config_path" ]; then
+        echo ""
+        echo -e "  ${RED}[✗]${NC} Файл конфига не найден или не указан"
+        echo ""
+        echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
+        read -rsn1
+        return 1
+    fi
+
+    local changed=0
+    local mss_value="92"
+    local mss_bulk_value="1200"
+
+    # Проверяем наличие строк (даже закомментированных)
+    local has_mss=$(grep -E '^[[:space:]]*#?[[:space:]]*client_mss[[:space:]]*=' "$config_path" | head -1)
+    local has_mss_bulk=$(grep -E '^[[:space:]]*#?[[:space:]]*mss_bulk[[:space:]]*=' "$config_path" | head -1)
+
+    # Раскомментируем и обновляем client_mss
+    if [ -n "$has_mss" ]; then
+        sed -i 's/^[[:space:]]*#[[:space:]]*client_mss[[:space:]]*=.*/client_mss = '"$mss_value"'/' "$config_path"
+        changed=1
+    else
+        # Добавляем в секцию server
+        if grep -q '^\[server\]' "$config_path"; then
+            sed -i '/^\[server\]/a client_mss = '"$mss_value"'' "$config_path"
+            changed=1
+        else
+            echo "" >> "$config_path"
+            echo "[server]" >> "$config_path"
+            echo "client_mss = $mss_value" >> "$config_path"
+            changed=1
+        fi
+    fi
+
+    # Раскомментируем и обновляем mss_bulk
+    if [ -n "$has_mss_bulk" ]; then
+        sed -i 's/^[[:space:]]*#[[:space:]]*mss_bulk[[:space:]]*=.*/mss_bulk = '"$mss_bulk_value"'/' "$config_path"
+        changed=1
+    else
+        # Добавляем в секцию server
+        if grep -q '^\[server\]' "$config_path"; then
+            sed -i '/^\[server\]/a mss_bulk = '"$mss_bulk_value"'' "$config_path"
+            changed=1
+        else
+            if ! grep -q '^\[server\]' "$config_path"; then
+                echo "" >> "$config_path"
+                echo "[server]" >> "$config_path"
+            fi
+            echo "mss_bulk = $mss_bulk_value" >> "$config_path"
+            changed=1
+        fi
+    fi
+
+    if [ "$changed" -eq 1 ]; then
+        echo ""
+        echo -e "  ${GREEN}[✓]${NC} MSS (client_mss = $mss_value) и mss_bulk = $mss_bulk_value добавлены в конфиг"
+        
+        # Спрашиваем о перезапуске
+        echo ""
+        echo -en "  ${BOLD}${NC}Перезапустить telemt для применения изменений?${NC} ${GREEN}${BOLD}[Enter/Y - да, N - нет]:${NC} "
+        local restart_confirm
+        read -r restart_confirm
+        
+        if [[ -z "$restart_confirm" || "$restart_confirm" =~ ^[yY]$ ]]; then
+            if systemctl restart telemt 2>/dev/null; then
+                echo -e "  ${GREEN}[✓]${NC} Telemt успешно перезапущен"
+            else
+                echo -e "  ${YELLOW}[!]${NC} Не удалось перезапустить telemt (возможно, он не установлен как служба)"
+            fi
+        else
+            echo -e "  ${BLUE}[i]${NC} Перезапуск отменён. Изменения применятся после перезапуска telemt"
+        fi
+    else
+        echo -e "  ${BLUE}[i]${NC} Не удалось добавить параметры client_mss и mss_bulk"
+    fi
+    echo ""
+    echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
+    read -rsn1
+}
+
+# ── ОТКЛЮЧЕНИЕ MSS, MSS_BULK И SYN_LIMIT ───────────────────
+disable_bad_options() {
+    local config_path=$(get_config_path)
+    if [ -z "$config_path" ] || [ ! -f "$config_path" ]; then
+        echo ""
+        echo -e "  ${RED}[✗]${NC} Файл конфига не найден или не указан"
+        echo ""
+        echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
+        read -rsn1
+        return 1
+    fi
+
+    local changed=0
+
+    if grep -E '^[[:space:]]*client_mss[[:space:]]*=' "$config_path" | grep -v '^#' | grep -q .; then
+        sed -i 's/^[[:space:]]*client_mss[[:space:]]*=.*/#client_mss = 0/' "$config_path"
+        changed=1
+    fi
+
+    if grep -E '^[[:space:]]*mss_bulk[[:space:]]*=' "$config_path" | grep -v '^#' | grep -q .; then
+        sed -i 's/^[[:space:]]*mss_bulk[[:space:]]*=.*/#mss_bulk = 0/' "$config_path"
+        changed=1
+    fi
+
+    if grep -E '^[[:space:]]*synlimit[[:space:]]*=' "$config_path" | grep -v '^#' | grep -q .; then
+        sed -i 's/^[[:space:]]*synlimit[[:space:]]*=.*/#synlimit = 0/' "$config_path"
+        changed=1
+    fi
+
+    if [ "$changed" -eq 1 ]; then
+        echo -e "  ${GREEN}[✓]${NC} MSS, mss_bulk и synlimit отключены (строки закомментированы)"
+    else
+        echo -e "  ${BLUE}[i]${NC} Активные строки client_mss, mss_bulk или synlimit не найдены"
+    fi
+    echo ""
+    echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
+    read -rsn1
+}
+
+# ── УПРАВЛЕНИЕ MSS В КОНФИГЕ ──────────────────────────────
+manage_mss() {
+    local config_path=$(get_config_path)
+    if [ -z "$config_path" ] || [ ! -f "$config_path" ]; then
+        echo ""
+        echo -e "  ${RED}[✗]${NC} Файл конфига не найден или не указан"
+        echo ""
+        echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
+        read -rsn1
+        return 1
+    fi
+
+    if are_bad_options_enabled_for_config "$config_path"; then
+        echo ""
+        echo -e "  ${BLUE}[i]${NC} Обнаружены активные строки с client_mss, mss_bulk или synlimit в $config_path"
+        echo -en "  ${BOLD}${NC}Отключить mss, mss_bulk и synlimit в cfg telemt? [Y/n]:${NC} "
+        local confirm
+        read -r confirm
+        if [[ -z "$confirm" || "$confirm" =~ ^[yY]$ ]]; then
+            disable_bad_options
+        else
+            echo -e "  ${BLUE}[i]${NC} Отмена"
+        fi
+    else
+        echo ""
+        echo -e "  ${BLUE}[i]${NC} client_mss, mss_bulk и synlimit уже отключены или отсутствуют в конфиге"
+        echo -en "  ${BOLD}Включить mss и mss_bulk в конфиге telemt? [Y/n]:${NC} "
+        local confirm
+        read -r confirm
+        if [[ -z "$confirm" || "$confirm" =~ ^[yY]$ ]]; then
+            enable_mss_options
+        else
+            echo -e "  ${BLUE}[i]${NC} Отмена"
+        fi
+    fi
+}
+
 # ── Главное меню ─────────────────────────────────────────────
 while true; do
     clear
     echo ""
-    echo -e "  ${BOLD}Telemt меню v0.57${NC}"
+    echo -e "  ${BOLD}Telemt меню v0.59${NC}"
     echo -e "  ${DIM}===========================${NC}"
     
     # Показываем информацию о Telemt, если установлен
@@ -738,6 +944,7 @@ while true; do
     echo -e "  ${CYAN}[4]${NC}  ${BOLD}Обновить путь к конфигу Telemt${NC}"
     echo -e "  ${CYAN}[5]${NC}  ${BOLD}Посмотреть логи Telemt${NC}"
     echo -e "  ${CYAN}[6]${NC}  ${BOLD}Вывести ссылку на подключение для пользователя${NC}"
+    echo -e "  ${CYAN}[8]${NC}  ${BOLD}Управление MSS в конфиге${NC} ${DIM}(client_mss, mss_bulk, synlimit)${NC}"
     echo -e "  ${RED}[7]${NC}  ${BOLD}Удалить Telemt${NC}"
     echo -e "  ${CYAN}[0]${NC}  ${BOLD}Назад в прокси меню${NC}"
     echo ""
@@ -775,6 +982,9 @@ while true; do
             ;;
         7)
             purge_telemt
+            ;;
+        8)
+            manage_mss
             ;;
         0)
             exec /opt/mtpr-simple/proxys/proxymenu.sh
