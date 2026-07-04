@@ -600,7 +600,7 @@ install_telemt_docker() {
     
     if [ -f "$DOCKER_SCRIPT" ]; then
         chmod +x "$DOCKER_SCRIPT"
-        exec "$DOCKER_SCRIPT"
+        source "$DOCKER_SCRIPT"
     else
         echo ""
         echo -e "  ${RED}[✗]${NC} Файл $DOCKER_SCRIPT не найден"
@@ -935,7 +935,7 @@ manage_mss() {
 while true; do
     clear
     echo ""
-    echo -e "  ${BOLD}Telemt меню v0.71${NC}"
+    echo -e "  ${BOLD}Telemt меню v0.73${NC}"
     echo -e "  ${DIM}===========================${NC}"
     
     # Показываем информацию о Telemt, если установлен
