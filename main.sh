@@ -400,7 +400,7 @@ is_our_syn_fix_installed() {
 
 # ── ПРОВЕРКА НАЛИЧИЯ NFTABLES SYN FIX ────────────────────────
 is_nft_fix_installed() {
-    nft list table inet mtpr_synfix &>/dev/null
+    nft list table inet mtpr_synfix &>/dev/null 2>&1
 }
 
 is_nft_fix_service_running() {
@@ -1308,7 +1308,9 @@ show_header() {
 is_optimization_applied() {
     local check_count=0
 
-    if [ -f /etc/sysctl.d/99-custom.conf ] || return 1
+    if [ ! -f /etc/sysctl.d/99-custom.conf ]; then
+        return 1
+    fi
 
     [ "$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null)" = "bbr" ] \
         && check_count=$((check_count + 1))
@@ -1373,10 +1375,8 @@ main_menu() {
         
         if [ "$iptables_status" = "inactive" ] && [ "$nft_status" = "inactive" ]; then
             local item1="${GREEN}${BOLD}Установить SYN FIX${NC}"
-        elif [ "$iptables_status" != "inactive" ] || [ "$nft_status" != "inactive" ]; then
-            local item1="${RED}${BOLD}Удалить SYN FIX${NC}"
         else
-            local item1="${CYAN}Перезапустить сервис${NC}"
+            local item1="${RED}${BOLD}Удалить SYN FIX${NC}"
         fi
 
         if is_optimization_applied; then
