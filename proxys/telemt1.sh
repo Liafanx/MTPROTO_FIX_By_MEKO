@@ -919,7 +919,7 @@ manage_mss() {
 while true; do
     clear
     echo ""
-    echo -e "  ${BOLD}Telemt меню v0.62${NC}"
+    echo -e "  ${BOLD}Telemt меню v0.63${NC}"
     echo -e "  ${DIM}===========================${NC}"
     
     # Показываем информацию о Telemt, если установлен
@@ -952,6 +952,24 @@ while true; do
             echo -e "  ${NC}${BOLD}Подключено к прокси:${NC} ${CYAN}${BOLD}0${NC}${BOLD} человек"
         fi
         
+        # ── СТАТУС MSS (как в main.sh) ──────────────────────
+        config_path=$(get_config_path)
+        if [ -f "$config_path" ]; then
+            _mss_enabled=$(is_mss_enabled_for_config "$config_path" && echo "включен" || echo "отключен")
+            _mss_bulk_enabled=$(is_mss_bulk_enabled_for_config "$config_path" && echo "включен" || echo "отключен")
+            _synlimit_enabled=$(is_synlimit_enabled_for_config "$config_path" && echo "включен" || echo "отключен")
+            
+            mss_color="${GREEN}"
+            mss_bulk_color="${GREEN}"
+            synlimit_color="${GREEN}"
+            
+            [ "$_mss_enabled" = "включен" ] && mss_color="${RED}"
+            [ "$_mss_bulk_enabled" = "включен" ] && mss_bulk_color="${RED}"
+            [ "$_synlimit_enabled" = "включен" ] && synlimit_color="${RED}"
+            
+            echo -e "  ${BOLD}Встроенный MSS:${NC} ${mss_color}${_mss_enabled}${NC}  |  ${BOLD}MSS_BULK:${NC} ${mss_bulk_color}${_mss_bulk_enabled}${NC}  |  ${BOLD}Synlimit:${NC} ${synlimit_color}${_synlimit_enabled}${NC}"
+        fi
+        
         echo ""
     fi
     
@@ -962,7 +980,7 @@ while true; do
     echo -e "  ${CYAN}[5]${NC}  ${BOLD}Посмотреть логи Telemt${NC}"
     echo -e "  ${CYAN}[6]${NC}  ${BOLD}Вывести ссылку на подключение для пользователя${NC}"
     
-    # ── Динамическое отображение статуса MSS ──────────────
+    # ── Динамическое отображение статуса MSS в меню ──────
     config_path=$(get_config_path)
     if [ -f "$config_path" ]; then
         if are_bad_options_enabled_for_config "$config_path"; then
