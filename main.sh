@@ -509,6 +509,34 @@ install_syn_fix() {
 
     # ── Docker режимы ─────────────────────────────────────────
     if [ "$FIX_TYPE" = "docker_smart" ] || [ "$FIX_TYPE" = "docker_classic" ]; then
+
+        # ── Проверяем наличие Docker ──────────────────────────
+        if ! command -v docker &>/dev/null; then
+            log_error "Docker не установлен. Установите Docker перед использованием этого режима."
+            return 1
+        fi
+
+        if [ "$auto_install" = false ]; then
+            echo ""
+            log_warning "Будет выполнена установка SYN FIX (Docker/nftables) на порты: $ports_str"
+            echo ""
+            echo -e "  ${BOLD}Что будет сделано:${NC}"
+            echo -e "  • Будет создана таблица nftables ${CYAN}mtpr_synfix${NC}"
+            echo -e "  • Добавлены правила SYN-фильтрации для портов: ${CYAN}$ports_str${NC}"
+            echo -e "  • Будет создан systemd сервис ${CYAN}mtpr-nft-synfix.service${NC}"
+            echo ""
+            log_warning "${BOLD}ВНИМАНИЕ:${NC} Данная настройка изменит файрвол системы."
+            echo ""
+            echo -en "  ${BOLD}Продолжить установку? [y/N]:${NC} "
+            local confirm
+            read -r confirm
+            if [[ ! "$confirm" =~ ^[yY]$ ]]; then
+                log_info "Установка отменена"
+                sleep 0.5
+                return 1
+            fi
+        fi
+
         log_info "Установка Docker (nftables) режима..."
         
         # Проверяем наличие nftables
@@ -549,15 +577,12 @@ add rule inet mtpr_synfix input tcp dport PORT_HERE tcp flags & (syn|ack) == syn
     @th,108,20 0x2ffff @th,160,16 0x204 @th,192,16 0x103 @th,224,24 0x10108 @th,320,32 0x4020000 \
     counter accept comment "ios_accept"
 
-# 2. iOS превысившие → REJECT (но у нас безусловный ACCEPT, так что сюда не попадают)
-# Оставлено для совместимости
-
-# 3. Все остальные → лимит 54/minute
+# 2. Все остальные → лимит 54/minute
 add rule inet mtpr_synfix input tcp dport PORT_HERE tcp flags & (syn|ack) == syn \
     meter mtpr_other { ip saddr timeout 60s limit rate 54/minute burst 1 packets } \
     counter accept comment "other_accept"
 
-# 4. Превысившие лимит → reject с icmp-host-unreachable
+# 3. Превысившие лимит → reject с icmp-host-unreachable
 add rule inet mtpr_synfix input tcp dport PORT_HERE tcp flags & (syn|ack) == syn \
     counter reject with icmp type host-unreachable comment "other_reject"
 SMART_NFT_EOF
@@ -583,7 +608,6 @@ CLASSIC_NFT_EOF
             log_success "NFT правила применены успешно"
         else
             log_error "Ошибка применения NFT правил"
-            cat "$NFT_SCRIPT"
             return 1
         fi
 
@@ -1118,7 +1142,7 @@ get_online_count() {
 show_header() {
     clear_screen
     echo ""
-    echo -e "  ${BOLD}MTProto Fixer by MEKO v1.50${NC}"
+    echo -e "  ${BOLD}MTProto Fixer by MEKO v1.51${NC}"
     echo -e "  ${DIM}===========================${NC}"
     echo ""
 
