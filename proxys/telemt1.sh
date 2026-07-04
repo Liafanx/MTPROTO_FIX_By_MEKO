@@ -15,6 +15,14 @@ NC='\033[0m'
 # ── Файл для сохранения пути к конфигу (используем общий с main.sh) ──
 CONFIG_PATH_FILE="/opt/mtpr-simple/config_path"
 
+# ── Функция обрезки пробелов (скопирована из main.sh) ──────
+trim() {
+    local var="$1"
+    var="${var#"${var%%[![:space:]]*}"}"
+    var="${var%"${var##*[![:space:]]}"}"
+    printf '%s' "$var"
+}
+
 # ── Функция получения текущего пути к конфигу ──────────────
 get_config_path() {
     if [ -f "$CONFIG_PATH_FILE" ] && [ -s "$CONFIG_PATH_FILE" ]; then
@@ -692,8 +700,9 @@ restart_telemt() {
     read -rsn1
 }
 
-# ── Функция управления MSS, mss_bulk и synlimit ────────────
-# ── Функция проверки MSS в конфиге ──────────────────────────
+# ── ФУНКЦИИ УПРАВЛЕНИЯ MSS (скопированы из main.sh) ────────
+
+# ── Проверка MSS в конкретном конфиге ──────────────────────
 is_mss_enabled_for_config() {
     local _cfg="$1"
     _cfg=$(trim "$_cfg")
@@ -852,8 +861,10 @@ disable_bad_options() {
     fi
 
     if [ "$changed" -eq 1 ]; then
+        echo ""
         echo -e "  ${GREEN}[✓]${NC} MSS, mss_bulk и synlimit отключены (строки закомментированы)"
     else
+        echo ""
         echo -e "  ${BLUE}[i]${NC} Активные строки client_mss, mss_bulk или synlimit не найдены"
     fi
     echo ""
@@ -883,6 +894,9 @@ manage_mss() {
             disable_bad_options
         else
             echo -e "  ${BLUE}[i]${NC} Отмена"
+            echo ""
+            echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
+            read -rsn1
         fi
     else
         echo ""
@@ -894,6 +908,9 @@ manage_mss() {
             enable_mss_options
         else
             echo -e "  ${BLUE}[i]${NC} Отмена"
+            echo ""
+            echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
+            read -rsn1
         fi
     fi
 }
@@ -902,7 +919,7 @@ manage_mss() {
 while true; do
     clear
     echo ""
-    echo -e "  ${BOLD}Telemt меню v0.59${NC}"
+    echo -e "  ${BOLD}Telemt меню v0.6${NC}"
     echo -e "  ${DIM}===========================${NC}"
     
     # Показываем информацию о Telemt, если установлен
