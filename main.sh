@@ -460,10 +460,10 @@ install_syn_fix() {
         echo -e "${NC}  Если TTL <65 и length 64 -> это ios и принимаем пакеты без лимита"
         echo -e "${NC}  Иначе -> это другое ус-во и ставим SYN 1/s"
         echo ""
-        echo -e "  ${YELLOW}[3]${NC}  ${BOLD}Новый вариант${NC}${BOLD}Docker - ${GREEN}рекомендуется для Docker${NC}"
+        echo -e "  ${YELLOW}[3]${NC}  ${BOLD}Новый вариант${NC}${BOLD} Docker - ${GREEN}рекомендуется для Docker${NC}"
         echo -e "${NC}  Если совпало -> это ios и принимаем пакеты без лимита"
         echo -e "${NC}  Если не совпало -> это другое ус-во и ставим SYN 1/s"
-        echo -e "  ${YELLOW}[4]${NC}  ${BOLD}Старый вариант${NC}${BOLD}Docker "
+        echo -e "  ${YELLOW}[4]${NC}  ${BOLD}Старый вариант${NC}${BOLD} Docker "
         echo -e "${NC}  Если TTL <65 и length 64 -> это ios и принимаем пакеты без лимита"
         echo -e "${NC}  Иначе -> это другое ус-во и ставим SYN 1/s"
         echo ""
@@ -1164,7 +1164,7 @@ get_online_count() {
 show_header() {
     clear_screen
     echo ""
-    echo -e "  ${BOLD}MTProto Fixer by MEKO v1.56${NC}"
+    echo -e "  ${BOLD}MTProto Fixer by MEKO v1.57${NC}"
     echo -e "  ${DIM}===========================${NC}"
     echo ""
 
