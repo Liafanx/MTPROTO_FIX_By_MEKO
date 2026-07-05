@@ -459,13 +459,15 @@ install_syn_fix() {
         echo -e "  ${CYAN}[2]${NC}  ${BOLD}Старый вариант${NC} (Разделение устройств определяя их TTL+Length)"
         echo -e "${NC}  Если TTL <65 и length 64 -> это ios и принимаем пакеты без лимита"
         echo -e "${NC}  Иначе -> это другое ус-во и ставим SYN 1/s"
-        echo -e "  ${YELLOW}[3]${NC}  ${BOLD}Docker Smart By-MEKO${NC} (nftables) — ${GREEN}рекомендуется для Docker${NC}"
-        echo -e "${NC}  iOS определяются по TCP fingerprint"
-        echo -e "${NC}  Остальные — лимит 54/minute / REJECT"
-        echo -e "  ${YELLOW}[4]${NC}  ${BOLD}Docker Classic${NC} (nftables)"
-        echo -e "${NC}  Стандартный лимит 1/second burst 1 для всех"
         echo ""
-        echo -en "  ${NC}${BOLD}Ввод (Новый - ${GREEN}${BOLD}1 или enter${NC}${BOLD}, старый - ${RED}${BOLD}2${NC}${BOLD}, Docker Smart - ${YELLOW}${BOLD}3${NC}${BOLD}, Docker Classic - ${YELLOW}${BOLD}4${NC}${BOLD}):${NC} "
+        echo -e "  ${YELLOW}[3]${NC}  ${BOLD}Новый вариант${NC}${BOLD}Docker - ${GREEN}рекомендуется для Docker${NC}"
+        echo -e "${NC}  Если совпало -> это ios и принимаем пакеты без лимита"
+        echo -e "${NC}  Если не совпало -> это другое ус-во и ставим SYN 1/s"
+        echo -e "  ${YELLOW}[4]${NC}  ${BOLD}Старый вариант${NC}${BOLD}Docker "
+        echo -e "${NC}  Если TTL <65 и length 64 -> это ios и принимаем пакеты без лимита"
+        echo -e "${NC}  Иначе -> это другое ус-во и ставим SYN 1/s"
+        echo ""
+        echo -en "  ${NC}${BOLD}Ввод (Новый - ${GREEN}${BOLD}1 или enter${NC}${BOLD}, старый - ${RED}${BOLD}2${NC}${BOLD}, Docker Новый - ${YELLOW}${BOLD}3${NC}${BOLD}, Docker старый - ${RED}${BOLD}4${NC}${BOLD}):${NC} "
         read -r fix_choice
 
         if [ -z "$fix_choice" ] || [ "$fix_choice" = "1" ]; then
@@ -1162,7 +1164,7 @@ get_online_count() {
 show_header() {
     clear_screen
     echo ""
-    echo -e "  ${BOLD}MTProto Fixer by MEKO v1.55${NC}"
+    echo -e "  ${BOLD}MTProto Fixer by MEKO v1.56${NC}"
     echo -e "  ${DIM}===========================${NC}"
     echo ""
 
