@@ -1195,7 +1195,7 @@ show_header() {
     fi
 
     if [ -n "$os_name" ] && [ -n "$os_version" ]; then
-        echo -e "  ${BOLD}${os_name}:${NC} ${GRAY}${os_version}${NC}"
+        echo -e "  ${BOLD}${os_name}:${NC} ${YELLOW}${BOLD}${os_version}${NC}"
     elif [ -n "$os_name" ]; then
         echo -e "  ${BOLD}${os_name}${NC}"
     fi
