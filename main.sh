@@ -1164,9 +1164,41 @@ get_online_count() {
 show_header() {
     clear_screen
     echo ""
-    echo -e "  ${BOLD}MTProto Fixer by MEKO v1.57${NC}"
+    echo -e "  ${BOLD}MTProto Fixer by MEKO v1.61${NC}"
     echo -e "  ${DIM}===========================${NC}"
     echo ""
+
+    # ── ПОЛУЧАЕМ ИНФОРМАЦИЮ ОБ ОС ──────────────────────────
+    local os_name=""
+    local os_version=""
+    
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        os_name="$NAME"
+        os_version="$VERSION_ID"
+    elif [ -f /etc/lsb-release ]; then
+        . /etc/lsb-release
+        os_name="$DISTRIB_DESCRIPTION"
+        os_version="$DISTRIB_RELEASE"
+    elif [ -f /etc/debian_version ]; then
+        os_name="Debian"
+        os_version=$(cat /etc/debian_version)
+    elif [ -f /etc/almalinux-release ]; then
+        os_name="AlmaLinux"
+        os_version=$(cat /etc/almalinux-release | awk '{print $3}')
+    elif [ -f /etc/redhat-release ]; then
+        os_name="Red Hat"
+        os_version=$(cat /etc/redhat-release | grep -oE '[0-9]+\.[0-9]+' | head -1)
+    else
+        os_name="Unknown OS"
+        os_version=""
+    fi
+
+    if [ -n "$os_name" ] && [ -n "$os_version" ]; then
+        echo -e "  ${BOLD}${os_name}:${NC} ${GRAY}${os_version}${NC}"
+    elif [ -n "$os_name" ]; then
+        echo -e "  ${BOLD}${os_name}${NC}"
+    fi
 
     # ── ПОЛУЧАЕМ IP-АДРЕС СЕРВЕРА ──────────────────────────
     local server_ip=""
@@ -1202,6 +1234,26 @@ show_header() {
 
     echo -e "  ${BOLD}IP:${NC} ${CYAN}${server_ip}${NC}"
     echo -e "  ${BOLD}Порты для прокси:${NC} ${CYAN}${open_ports}${NC}"
+
+    # ── ПОЛУЧАЕМ ВЕРСИЮ OPENSSL ─────────────────────────────
+    local openssl_version=""
+    local openssl_display=""
+    local openssl_color=""
+    
+    if command -v openssl &>/dev/null; then
+        openssl_version=$(openssl version 2>/dev/null | awk '{print $2}' | cut -d'-' -f1 | cut -d'+' -f1)
+        
+        if [ -n "$openssl_version" ]; then
+            if [[ "$(printf '%s\n' "3.5" "$openssl_version" | sort -V | head -n1)" = "3.5" ]]; then
+                openssl_color="${GREEN}${BOLD}"
+                openssl_display="${openssl_version}"
+            else
+                openssl_color="${RED}${BOLD}"
+                openssl_display="${openssl_version} ${YELLOW}${BOLD}(не подходит для SelfSteal SNI)${NC}"
+            fi
+            echo -e "  ${BOLD}OpenSSL:${NC} ${openssl_color}${openssl_display}${NC}"
+        fi
+    fi
 
     # ── ПЕРЕЧИТЫВАЕМ ПУТЬ К КОНФИГУ ──────────────────────────
     local current_config_path=""
