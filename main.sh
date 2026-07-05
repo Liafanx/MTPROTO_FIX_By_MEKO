@@ -1164,7 +1164,7 @@ get_online_count() {
 show_header() {
     clear_screen
     echo ""
-    echo -e "  ${BOLD}MTProto Fixer by MEKO v1.58${NC}"
+    echo -e "  ${BOLD}MTProto Fixer by MEKO v1.57${NC}"
     echo -e "  ${DIM}===========================${NC}"
     echo ""
 
@@ -1202,29 +1202,6 @@ show_header() {
 
     echo -e "  ${BOLD}IP:${NC} ${CYAN}${server_ip}${NC}"
     echo -e "  ${BOLD}Порты для прокси:${NC} ${CYAN}${open_ports}${NC}"
-
-    # ── ПОЛУЧАЕМ ВЕРСИЮ OPENSSL ─────────────────────────────
-    local openssl_version=""
-    local openssl_display=""
-    local openssl_color=""
-    
-    if command -v openssl &>/dev/null; then
-        openssl_version=$(openssl version 2>/dev/null | awk '{print $2}' | cut -d'-' -f1 | cut -d'+' -f1)
-        
-        if [ -n "$openssl_version" ]; then
-            # Сравниваем версию с 3.5
-            if [[ "$(printf '%s\n' "3.5" "$openssl_version" | sort -V | head -n1)" = "3.5" ]]; then
-                # Версия >= 3.5
-                openssl_color="${GREEN}${BOLD}"
-                openssl_display="${openssl_version}"
-            else
-                # Версия < 3.5
-                openssl_color="${RED}${BOLD}"
-                openssl_display="${openssl_version} ${YELLOW}{BOLD}(не подходит для SelfSteal SNI)${NC}"
-            fi
-            echo -e "  ${BOLD}OpenSSL:${NC}${BOLD} ${openssl_color}${openssl_display}${NC}"
-        fi
-    fi
 
     # ── ПЕРЕЧИТЫВАЕМ ПУТЬ К КОНФИГУ ──────────────────────────
     local current_config_path=""
@@ -1371,6 +1348,276 @@ show_header() {
     fi
 
     echo ""
+}
+
+# ── Функция проверки статуса базовой оптимизации ──────────
+is_optimization_applied() {
+    local check_count=0
+
+    if [ ! -f /etc/sysctl.d/99-custom.conf ]; then
+        return 1
+    fi
+
+    [ "$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null)" = "bbr" ] \
+        && check_count=$((check_count + 1))
+
+    [ "$(sysctl -n net.core.default_qdisc 2>/dev/null)" = "fq" ] \
+        && check_count=$((check_count + 1))
+
+    [ "$(sysctl -n net.ipv4.tcp_fastopen 2>/dev/null)" = "3" ] \
+        && check_count=$((check_count + 1))
+
+    [ "$check_count" -ge 2 ]
+}
+
+# ── Функция открытия меню прокси ──────────────────────────
+open_proxy_menu() {
+    local PROXY_MENU_SCRIPT="/opt/mtpr-simple/proxys/proxymenu.sh"
+    if [ -f "$PROXY_MENU_SCRIPT" ]; then
+        exec "$PROXY_MENU_SCRIPT"
+    else
+        log_error "Файл $PROXY_MENU_SCRIPT не найден"
+        echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
+        read -rsn1
+    fi
+}
+
+# ── Функция проверки ограничений сервера ──────────────────
+check_censor() {
+    echo ""
+    log_info "Проверка ограничений на сервере..."
+    echo ""
+    wget -qO- censorcheck.tlab.pw | bash
+    echo ""
+    echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
+    read -rsn1
+}
+
+# ── Главное меню ─────────────────────────────────────────────
+main_menu() {
+    local auto_install=false
+    if [[ "$1" == "-auto_install" ]]; then
+        auto_install=true
+        local forced_port="$2"
+        echo -e "  ${BLUE}[i]${NC} Запуск в режиме авто-установки SYN FIX..."
+        install_syn_fix -auto_install "$forced_port"
+        echo ""
+        read -rsn1 -p "  Нажмите любую клавишу для возврата в меню..."
+    fi
+
+    while true; do
+        local show_iptables_rules=false
+        if [ -f /etc/iptables/rules.v4 ]; then
+            if grep -q "MTPR_SYNFIX" /etc/iptables/rules.v4 2>/dev/null; then
+                show_iptables_rules=true
+            fi
+        fi
+        
+        show_header
+        echo ""
+
+        local iptables_status=$(get_synfix_status)
+        local nft_status=$(get_nft_fix_status)
+        
+        if [ "$iptables_status" = "inactive" ] && [ "$nft_status" = "inactive" ]; then
+            local item1="${GREEN}${BOLD}Установить SYN FIX${NC}"
+        else
+            local item1="${RED}${BOLD}Удалить SYN FIX${NC}"
+        fi
+
+        if is_optimization_applied; then
+            local item2_text="${GRAY}${BOLD}Выполнить базовую оптимизацию (уже применена)${NC}"
+        else
+            local item2_text="${GREEN}${BOLD}Выполнить базовую оптимизацию${NC}"
+        fi
+
+        echo -e "  ${CYAN}[1]${NC}  $item1"
+        echo -e "  ${CYAN}[2]${NC}  $item2_text"
+        echo -e "  ${CYAN}[3]${NC}  ${NC}${BOLD}Меню прокси и конфигов${NC}"
+        echo -e "  ${CYAN}[4]${NC}  ${NC}${BOLD}Обновить скрипт${NC}"
+        echo -e "  ${CYAN}[5]${NC}  ${NC}${BOLD}Проверить доступ к сайтам с сервера(тг,ютуб,инст, и тд.)${NC}"
+        echo -e "  ${CYAN}[6]${NC}  ${NC}${BOLD}Проверить домен/прокси на ios-валидность${YELLOW}${BOLD}(Необходим: OpenSSL 3.5+)  ${NC}"
+        echo -e "  ${CYAN}[7]${NC}  ${RED}${BOLD}Удалить полностью MEKOpr${NC}"
+        
+        if [ "$show_iptables_rules" = true ]; then
+            echo -e "  ${RED}[8]${NC}  Удалить правила iptables-persistent"
+        fi
+        
+        echo -e "  ${CYAN}[0]${NC}  Выход"
+        echo ""
+        echo -en "  ${BOLD}Выбор:${NC} "
+        local choice
+        read -r choice
+
+        case "$choice" in
+        1)
+            echo ""
+            local iptables_status=$(get_synfix_status)
+            local nft_status=$(get_nft_fix_status)
+            
+            # Если установлен iptables
+            if [ "$iptables_status" != "inactive" ]; then
+                log_info "Обнаружен iptables SYN FIX ($SYNFIX_CHAIN). Удалить?"
+                echo -en "  ${BOLD}Удалить? [Y/n]:${NC} "
+                local confirm
+                read -r confirm
+                if [[ -z "$confirm" || "$confirm" =~ ^[yY]$ ]]; then
+                    remove_syn_fix
+                else
+                    log_info "Отмена удаления"
+                fi
+                echo ""
+                read -rsn1 -p "  Нажмите любую клавишу для возврата в меню..."
+                continue
+            fi
+            
+            # Если установлен nftables
+            if [ "$nft_status" != "inactive" ]; then
+                log_info "Обнаружен nftables SYN FIX (mtpr_synfix). Удалить?"
+                echo -en "  ${BOLD}Удалить? [Y/n]:${NC} "
+                local confirm
+                read -r confirm
+                if [[ -z "$confirm" || "$confirm" =~ ^[yY]$ ]]; then
+                    remove_syn_fix
+                else
+                    log_info "Отмена удаления"
+                fi
+                echo ""
+                read -rsn1 -p "  Нажмите любую клавишу для возврата в меню..."
+                continue
+            fi
+            
+            # Если ничего не установлено — запускаем установку
+            if ! install_syn_fix; then
+                continue
+            fi
+            echo ""
+            read -rsn1 -p "  Нажмите любую клавишу для возврата в меню..."
+            ;;
+        2)
+            echo ""
+            apply_basic_optimization
+            echo ""
+            read -rsn1 -p "  Нажмите любую клавишу для возврата в меню..."
+            ;;
+        3)
+            open_proxy_menu
+            ;;
+        4)
+            echo ""
+            update_script
+            ;;
+        5)
+            check_censor
+            ;;
+        6)
+            echo ""
+            # Проверяем версию OpenSSL
+            OPENSSL_VERSION=$(openssl version 2>/dev/null | awk '{print $2}')
+            REQUIRED_VERSION="3.5"
+            
+            if [ -z "$OPENSSL_VERSION" ]; then
+                log_error "Не удалось определить версию OpenSSL"
+                echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
+                read -rsn1
+                continue
+            fi
+            
+            if [[ "$(printf '%s\n' "$REQUIRED_VERSION" "$OPENSSL_VERSION" | sort -V | head -n1)" != "$REQUIRED_VERSION" ]]; then
+                echo ""
+                echo -e "  ${RED}${BOLD}❌ Данная функция доступна только на ОС с OpenSSL 3.5 и выше${NC}"
+                echo -e "  ${YELLOW}Ваша версия OpenSSL: ${OPENSSL_VERSION}${NC}"
+                echo ""
+                echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
+                read -rsn1
+                continue
+            fi
+            
+            CHECKER_SCRIPT="/opt/mtpr-simple/proxy_checker.py"
+            if [ -f "$CHECKER_SCRIPT" ]; then
+                chmod +x "$CHECKER_SCRIPT"
+                python3 "$CHECKER_SCRIPT"
+            else
+                log_error "Файл $CHECKER_SCRIPT не найден"
+                echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
+                read -rsn1
+            fi
+            ;;
+        7)
+            remove_mekopr
+            ;;
+        8)
+            echo ""
+            remove_iptables_rules
+            echo ""
+            read -rsn1 -p "  Нажмите любую клавишу для возврата в меню..."
+            ;;
+        0 | q | Q)
+            echo ""
+            log_info "Выход"
+            exit 0
+            ;;
+        *)
+            log_error "Неверный выбор"
+            sleep 1
+            ;;
+        esac
+    done
+}
+
+# ── Обновление скрипта ──────────────────────────────────────────
+update_script() {
+    local url="https://raw.githubusercontent.com/Mekotofeuka/MTPROTO_FIX_By_MEKO/main/main.sh"
+    local temp="/tmp/$(basename "$0").new.$$"
+    local saved_port=""
+
+    if [ -f "$PORT_FILE" ] && [ -s "$PORT_FILE" ]; then
+        saved_port=$(cat "$PORT_FILE")
+    fi
+    if ! [[ "$saved_port" =~ ^[0-9]+$ ]]; then
+        saved_port="443"
+    fi
+
+    echo ""
+    echo -e "  ${YELLOW}[!]${NC} Удаляем текущую версию..."
+    remove_syn_fix
+    rm -f "$0"
+
+    echo ""
+    echo -e "  ${GREEN}[✓]${NC} Скачиваем новую версию main.sh..."
+    if curl -fsSL "$url" -o "$temp"; then
+        chmod +x "$temp"
+
+        echo -e "  ${GREEN}[✓]${NC} Скачиваем файлы прокси-меню..."
+        local proxy_files=("proxys/proxymenu.sh" "proxys/telemt1.sh" "proxys/mtprotozig1.sh")
+        mkdir -p /opt/mtpr-simple/proxys
+        for pfile in "${proxy_files[@]}"; do
+            if curl -fsSL "https://raw.githubusercontent.com/Mekotofeuka/MTPROTO_FIX_By_MEKO/main/$pfile" -o "/opt/mtpr-simple/$pfile"; then
+                echo -e "    ${GREEN}✓${NC} $(basename "$pfile")"
+            else
+                echo -e "    ${RED}✗${NC} $(basename "$pfile") — ошибка"
+            fi
+        done
+        chmod +x /opt/mtpr-simple/proxys/*.sh
+
+        if mv "$temp" "$0"; then
+            echo -e "  ${GREEN}[✓]${NC} Обновление успешно. Перезапускаемся..."
+            sleep 2
+            exec "$0" -auto_install "$saved_port"
+        else
+            echo -e "  ${RED}[✗]${NC} Не удалось перезаписать файл"
+            rm -f "$temp"
+            exit 1
+        fi
+    else
+        echo -e "  ${RED}[✗]${NC} Ошибка скачивания main.sh"
+        rm -f "$temp"
+        echo -e "  ${YELLOW}Продолжить запуск из исходного файла? [Y/n]:${NC} "
+        read -r confirm
+        if [[ "$confirm" =~ ^[nN]$ ]]; then
+            exit 1
+        fi
+    fi
 }
 
 # ── Запуск ────────────────────────────────────────────────────
