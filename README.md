@@ -188,7 +188,7 @@ Gn7w3EBkZqPjPDcbkTaxspip42TuhoGqaaEqHAxhG9V1
 - [@CryZFix](https://github.com/CryZFix/)
 - [@Bxhost](https://github.com/bxhost)
 - [@Liafanx](https://github.com/Liafanx)
-- https://github.com/Liafanx/MTproxy-reanimation - схожий по функционалу лаунчер, отдельное спасибо за определение маркера
+- https://github.com/Liafanx/MTproxy-reanimation - схожий по функционалу инструмент, отдельное спасибо за определение маркера
 - https://assyoucandy.github.io/telemt-server-guide/telemt-keepalive-guide.html
 - https://h1de0x.github.io/telemt-tune/
 
