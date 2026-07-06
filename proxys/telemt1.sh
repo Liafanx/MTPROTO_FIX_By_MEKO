@@ -217,7 +217,8 @@ generate_proxy_links() {
     if [ "$tls_enabled" = true ]; then
         local hex_domain=""
         if [ -n "$detected_tls_domain" ]; then
-            hex_domain=$(echo -n "$detected_tls_domain" | xxd -p -c 256 2>/dev/null)
+            # Используем od вместо xxd для 100% совместимости
+            hex_domain=$(echo -n "$detected_tls_domain" | od -An -tx1 | tr -d ' \n' 2>/dev/null)
         fi
         local tls_secret="ee${detected_secret}${hex_domain}"
         links="${links}  TLS:\n"
@@ -407,7 +408,8 @@ find_user_link() {
     if [ "$tls_enabled" = true ]; then
         local hex_domain=""
         if [ -n "$detected_tls_domain" ]; then
-            hex_domain=$(echo -n "$detected_tls_domain" | xxd -p -c 256 2>/dev/null)
+            # Используем od вместо xxd для 100% совместимости
+            hex_domain=$(echo -n "$detected_tls_domain" | od -An -tx1 | tr -d ' \n' 2>/dev/null)
         fi
         local tls_secret="ee${user_secret}${hex_domain}"
         echo -e "  ${BOLD}TLS:${NC}"
