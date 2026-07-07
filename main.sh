@@ -1164,7 +1164,7 @@ get_online_count() {
 show_header() {
     clear_screen
     echo ""
-    echo -e "  ${NC}${BOLD}MEKO ${CYAN}${BOLD}| ${NC}${BOLD}MTProto Launcher  v1.67${NC}"
+    echo -e "  ${NC}${BOLD}MEKO ${CYAN}${BOLD}| ${NC}${BOLD}MTProto Launcher  v1.68${NC}"
     echo -e "  ${DIM}===========================${NC}"
     echo ""
 
@@ -1484,12 +1484,28 @@ main_menu() {
             local item2_text="${GREEN}${BOLD}Выполнить базовую оптимизацию${NC}"
         fi
 
+        # ── Проверяем версию OpenSSL для пункта 6 ──────────────
+        local openssl_version=""
+        local openssl_required_text=""
+        if command -v openssl &>/dev/null; then
+            openssl_version=$(openssl version 2>/dev/null | awk '{print $2}' | cut -d'-' -f1 | cut -d'+' -f1)
+            if [ -n "$openssl_version" ]; then
+                if [[ "$(printf '%s\n' "3.5" "$openssl_version" | sort -V | head -n1)" != "3.5" ]]; then
+                    openssl_required_text="${YELLOW}${BOLD}(Необходим: OpenSSL 3.5+)${NC}"
+                fi
+            else
+                openssl_required_text="${YELLOW}${BOLD}(Необходим: OpenSSL 3.5+)${NC}"
+            fi
+        else
+            openssl_required_text="${YELLOW}${BOLD}(Необходим: OpenSSL 3.5+)${NC}"
+        fi
+
         echo -e "  ${CYAN}[1]${NC}  $item1"
         echo -e "  ${CYAN}[2]${NC}  $item2_text"
         echo -e "  ${CYAN}[3]${NC}  ${NC}${BOLD}Меню прокси и конфигов${NC}"
         echo -e "  ${CYAN}[4]${NC}  ${NC}${BOLD}Обновить скрипт${NC}"
         echo -e "  ${CYAN}[5]${NC}  ${NC}${BOLD}Проверить доступ к сайтам с сервера(тг,ютуб,инст, и тд.)${NC}"
-        echo -e "  ${CYAN}[6]${NC}  ${NC}${BOLD}Проверить домен/прокси на ios-валидность${YELLOW}${BOLD}(Необходим: OpenSSL 3.5+)  ${NC}"
+        echo -e "  ${CYAN}[6]${NC}  ${NC}${BOLD}Проверить домен/прокси на ios-валидность${NC} ${openssl_required_text}"
         echo -e "  ${CYAN}[7]${NC}  ${RED}${BOLD}Удалить полностью MEKOpr${NC}"
         
         if [ "$show_iptables_rules" = true ]; then
@@ -1626,69 +1642,6 @@ main_menu() {
             ;;
         esac
     done
-}
-
-# ── Обновление скрипта ──────────────────────────────────────────
-update_script() {
-    local url="https://raw.githubusercontent.com/Mekotofeuka/MTPROTO_FIX_By_MEKO/main/main.sh"
-    local temp="/tmp/$(basename "$0").new.$$"
-
-    echo ""
-    echo -e "  ${GREEN}[✓]${NC} Скачиваем новую версию main.sh..."
-    if curl -fsSL "$url" -o "$temp"; then
-        chmod +x "$temp"
-
-        echo -e "  ${GREEN}[✓]${NC} Скачиваем все необходимые файлы..."
-        
-        # Все файлы которые нужно скачать (как в install.sh)
-        local all_files=(
-            "proxys/proxymenu.sh"
-            "proxys/telemt1.sh"
-            "proxys/mtprotozig1.sh"
-            "proxys/telemt_in_docker1.sh"
-            "proxy_checker.py"
-        )
-        
-        mkdir -p /opt/mtpr-simple/proxys
-        
-        local all_ok=true
-        for pfile in "${all_files[@]}"; do
-            if curl -fsSL "https://raw.githubusercontent.com/Mekotofeuka/MTPROTO_FIX_By_MEKO/main/$pfile" -o "/opt/mtpr-simple/$pfile"; then
-                echo -e "    ${GREEN}✓${NC} $(basename "$pfile")"
-            else
-                echo -e "    ${RED}✗${NC} $(basename "$pfile") — ошибка"
-                all_ok=false
-            fi
-        done
-        
-        if [ "$all_ok" = true ]; then
-            chmod +x /opt/mtpr-simple/proxys/*.sh 2>/dev/null || true
-            chmod +x /opt/mtpr-simple/proxy_checker.py 2>/dev/null || true
-        fi
-
-        if mv "$temp" "$0"; then
-            echo -e "  ${GREEN}[✓]${NC} Обновление успешно!"
-            echo ""
-            echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
-            read -rsn1
-            # Перезапускаем скрипт без авто-установки
-            exec "$0"
-        else
-            echo -e "  ${RED}[✗]${NC} Не удалось перезаписать файл"
-            rm -f "$temp"
-            echo ""
-            echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
-            read -rsn1
-            return 1
-        fi
-    else
-        echo -e "  ${RED}[✗]${NC} Ошибка скачивания main.sh"
-        rm -f "$temp"
-        echo ""
-        echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
-        read -rsn1
-        return 1
-    fi
 }
 
 # ── Запуск ────────────────────────────────────────────────────
