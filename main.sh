@@ -453,17 +453,17 @@ install_syn_fix() {
 
         echo ""
         echo -e "  ${BOLD}Выберите тип SYN FIX:${NC}"
-        echo -e "  ${GREEN}[1]${NC}  ${BOLD}Новый вариант${NC} (Разделение устройств с помощью u32 по байтам из пакета) — ${GREEN}рекомендуется${NC}"
+        echo -e "  ${GREEN}[1]${NC}  ${BOLD}Новый вариант(iptables)${NC} (Разделение устройств с помощью u32 по байтам из пакета) — ${GREEN}рекомендуется${NC}"
         echo -e "${NC}  Если совпало -> это ios и принимаем пакеты без лимита"
         echo -e "${NC}  Если не совпало -> это другое ус-во и ставим SYN 1/s"
-        echo -e "  ${CYAN}[2]${NC}  ${BOLD}Старый вариант${NC} (Разделение устройств определяя их TTL+Length)"
+        echo -e "  ${CYAN}[2]${NC}  ${BOLD}Старый вариант(iptables)${NC} (Разделение устройств определяя их TTL+Length)"
         echo -e "${NC}  Если TTL <65 и length 64 -> это ios и принимаем пакеты без лимита"
         echo -e "${NC}  Иначе -> это другое ус-во и ставим SYN 1/s"
         echo ""
-        echo -e "  ${YELLOW}[3]${NC}  ${BOLD}Новый вариант${NC}${BOLD} Docker - ${GREEN}рекомендуется для Docker${NC}"
+        echo -e "  ${YELLOW}[3]${NC}  ${BOLD}Новый вариант(nftables)${NC}${BOLD} Docker - ${GREEN}рекомендуется для Docker${NC}"
         echo -e "${NC}  Если совпало -> это ios и принимаем пакеты без лимита"
         echo -e "${NC}  Если не совпало -> это другое ус-во и ставим SYN 1/s"
-        echo -e "  ${YELLOW}[4]${NC}  ${BOLD}Старый вариант${NC}${BOLD} Docker "
+        echo -e "  ${YELLOW}[4]${NC}  ${BOLD}Старый вариант(nftables)${NC}${BOLD} Docker "
         echo -e "${NC}  Если TTL <65 и length 64 -> это ios и принимаем пакеты без лимита"
         echo -e "${NC}  Иначе -> это другое ус-во и ставим SYN 1/s"
         echo ""
@@ -1164,7 +1164,7 @@ get_online_count() {
 show_header() {
     clear_screen
     echo ""
-    echo -e "  ${NC}${BOLD}MEKO ${CYAN}${BOLD}| ${NC}${BOLD}MTProto Launcher  v1.65${NC}"
+    echo -e "  ${NC}${BOLD}MEKO ${CYAN}${BOLD}| ${NC}${BOLD}MTProto Launcher  v1.67${NC}"
     echo -e "  ${DIM}===========================${NC}"
     echo ""
 
@@ -1301,11 +1301,11 @@ show_header() {
     fi
 
     if [ "$nft_status" = "active" ]; then
-        echo -e "  ${BOLD}SYN FIX (nftables/Docker):${NC} ${GREEN}Установлен${NC}"
+        echo -e "  ${BOLD}SYN FIX (nftables (работает с Docker)):${NC} ${GREEN}Установлен${NC}"
     elif [ "$nft_status" = "has_table_only" ]; then
-        echo -e "  ${BOLD}SYN FIX (nftables/Docker):${NC} ${YELLOW}Таблица есть, сервис не запущен${NC}"
+        echo -e "  ${BOLD}SYN FIX (nftables (работает с Docker)):${NC} ${YELLOW}Таблица есть, сервис не запущен${NC}"
     else
-        echo -e "  ${BOLD}SYN FIX (nftables/Docker):${NC} ${RED}Не установлен${NC}"
+        echo -e "  ${BOLD}SYN FIX (nftables (работает с Docker)):${NC} ${RED}Не установлен${NC}"
     fi
 
     local telemt_installed=false
