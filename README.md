@@ -83,6 +83,9 @@ curl -fsSL https://raw.githubusercontent.com/Mekotofeuka/MTPROTO_FIX_By_MEKO/mai
 mekopr
 ```
 
+Зеркало:
+https://gitlab.com/Mekotofeuka/MTPROTO_FIX_By_MEKO
+
 # Как работает фикс:
 
 Применяет к серверу набор правил, который разделяет устройства на 2 вида - **ios** и **не ios** и применяет к каждому свой лимит
