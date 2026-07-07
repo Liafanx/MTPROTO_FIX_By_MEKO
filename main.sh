@@ -1622,7 +1622,7 @@ main_menu() {
             ;;
         *)
             log_error "Неверный выбор"
-            sleep 1
+            sleep 0.2
             ;;
         esac
     done
