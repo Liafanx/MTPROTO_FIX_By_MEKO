@@ -1638,17 +1638,33 @@ update_script() {
     if curl -fsSL "$url" -o "$temp"; then
         chmod +x "$temp"
 
-        echo -e "  ${GREEN}[✓]${NC} Скачиваем файлы прокси-меню..."
-        local proxy_files=("proxys/proxymenu.sh" "proxys/telemt1.sh" "proxys/mtprotozig1.sh")
+        echo -e "  ${GREEN}[✓]${NC} Скачиваем все необходимые файлы..."
+        
+        # Все файлы которые нужно скачать (как в install.sh)
+        local all_files=(
+            "proxys/proxymenu.sh"
+            "proxys/telemt1.sh"
+            "proxys/mtprotozig1.sh"
+            "proxys/telemt_in_docker1.sh"
+            "proxy_checker.py"
+        )
+        
         mkdir -p /opt/mtpr-simple/proxys
-        for pfile in "${proxy_files[@]}"; do
+        
+        local all_ok=true
+        for pfile in "${all_files[@]}"; do
             if curl -fsSL "https://raw.githubusercontent.com/Mekotofeuka/MTPROTO_FIX_By_MEKO/main/$pfile" -o "/opt/mtpr-simple/$pfile"; then
                 echo -e "    ${GREEN}✓${NC} $(basename "$pfile")"
             else
                 echo -e "    ${RED}✗${NC} $(basename "$pfile") — ошибка"
+                all_ok=false
             fi
         done
-        chmod +x /opt/mtpr-simple/proxys/*.sh
+        
+        if [ "$all_ok" = true ]; then
+            chmod +x /opt/mtpr-simple/proxys/*.sh 2>/dev/null || true
+            chmod +x /opt/mtpr-simple/proxy_checker.py 2>/dev/null || true
+        fi
 
         if mv "$temp" "$0"; then
             echo -e "  ${GREEN}[✓]${NC} Обновление успешно!"
