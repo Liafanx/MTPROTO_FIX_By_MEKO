@@ -1164,7 +1164,7 @@ get_online_count() {
 show_header() {
     clear_screen
     echo ""
-    echo -e "  ${NC}${BOLD}MEKO ${CYAN}${BOLD}| ${NC}${BOLD}MTProto Launcher  v1.64${NC}"
+    echo -e "  ${NC}${BOLD}MEKO ${CYAN}${BOLD}| ${NC}${BOLD}MTProto Launcher  v1.65${NC}"
     echo -e "  ${DIM}===========================${NC}"
     echo ""
 
@@ -1632,19 +1632,6 @@ main_menu() {
 update_script() {
     local url="https://raw.githubusercontent.com/Mekotofeuka/MTPROTO_FIX_By_MEKO/main/main.sh"
     local temp="/tmp/$(basename "$0").new.$$"
-    local saved_port=""
-
-    if [ -f "$PORT_FILE" ] && [ -s "$PORT_FILE" ]; then
-        saved_port=$(cat "$PORT_FILE")
-    fi
-    if ! [[ "$saved_port" =~ ^[0-9]+$ ]]; then
-        saved_port="443"
-    fi
-
-    echo ""
-    echo -e "  ${YELLOW}[!]${NC} Удаляем текущую версию..."
-    remove_syn_fix
-    rm -f "$0"
 
     echo ""
     echo -e "  ${GREEN}[✓]${NC} Скачиваем новую версию main.sh..."
@@ -1664,22 +1651,27 @@ update_script() {
         chmod +x /opt/mtpr-simple/proxys/*.sh
 
         if mv "$temp" "$0"; then
-            echo -e "  ${GREEN}[✓]${NC} Обновление успешно. Перезапускаемся..."
-            sleep 2
-            exec "$0" -auto_install "$saved_port"
+            echo -e "  ${GREEN}[✓]${NC} Обновление успешно!"
+            echo ""
+            echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
+            read -rsn1
+            # Перезапускаем скрипт без авто-установки
+            exec "$0"
         else
             echo -e "  ${RED}[✗]${NC} Не удалось перезаписать файл"
             rm -f "$temp"
-            exit 1
+            echo ""
+            echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
+            read -rsn1
+            return 1
         fi
     else
         echo -e "  ${RED}[✗]${NC} Ошибка скачивания main.sh"
         rm -f "$temp"
-        echo -e "  ${YELLOW}Продолжить запуск из исходного файла? [Y/n]:${NC} "
-        read -r confirm
-        if [[ "$confirm" =~ ^[nN]$ ]]; then
-            exit 1
-        fi
+        echo ""
+        echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
+        read -rsn1
+        return 1
     fi
 }
 
