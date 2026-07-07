@@ -1164,7 +1164,7 @@ get_online_count() {
 show_header() {
     clear_screen
     echo ""
-    echo -e "  ${NC}${BOLD}MEKO ${CYAN}${BOLD}| ${NC}${BOLD}MTProto Launcher  v1.63${NC}"
+    echo -e "  ${NC}${BOLD}MEKO ${CYAN}${BOLD}| ${NC}${BOLD}MTProto Launcher  v1.64${NC}"
     echo -e "  ${DIM}===========================${NC}"
     echo ""
 
@@ -1454,7 +1454,8 @@ main_menu() {
         echo -e "  ${BLUE}[i]${NC} Запуск в режиме авто-установки SYN FIX..."
         install_syn_fix -auto_install "$forced_port"
         echo ""
-        read -rsn1 -p "  Нажмите любую клавишу для возврата в меню..."
+        # Для авто-установки оставляем один read, он уже есть внутри install_syn_fix
+        return 0
     fi
 
     while true; do
@@ -1518,8 +1519,10 @@ main_menu() {
                 else
                     log_info "Отмена удаления"
                 fi
+                # Пауза здесь
                 echo ""
-                read -rsn1 -p "  Нажмите любую клавишу для возврата в меню..."
+                echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
+                read -rsn1
                 continue
             fi
             
@@ -1534,33 +1537,38 @@ main_menu() {
                 else
                     log_info "Отмена удаления"
                 fi
+                # Пауза здесь
                 echo ""
-                read -rsn1 -p "  Нажмите любую клавишу для возврата в меню..."
+                echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
+                read -rsn1
                 continue
             fi
             
             # Если ничего не установлено — запускаем установку
-            if ! install_syn_fix; then
-                continue
-            fi
-            echo ""
-            read -rsn1 -p "  Нажмите любую клавишу для возврата в меню..."
+            # install_syn_fix уже содержит свой read, поэтому после него НЕ добавляем ещё один
+            install_syn_fix
+            # install_syn_fix сам выводит "Нажмите любую клавишу" и делает read
+            # Поэтому НЕ добавляем ещё один read
             ;;
         2)
             echo ""
             apply_basic_optimization
             echo ""
-            read -rsn1 -p "  Нажмите любую клавишу для возврата в меню..."
+            echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
+            read -rsn1
             ;;
         3)
             open_proxy_menu
+            # open_proxy_menu вызывает exec, управление не возвращается
             ;;
         4)
             echo ""
             update_script
+            # update_script перезапускает скрипт через exec, управление не возвращается
             ;;
         5)
             check_censor
+            # check_censor уже содержит свой read и сообщение
             ;;
         6)
             echo ""
@@ -1589,6 +1597,7 @@ main_menu() {
             if [ -f "$CHECKER_SCRIPT" ]; then
                 chmod +x "$CHECKER_SCRIPT"
                 python3 "$CHECKER_SCRIPT"
+                # proxy_checker.py сам управляет паузами, не добавляем свой read
             else
                 log_error "Файл $CHECKER_SCRIPT не найден"
                 echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
@@ -1597,12 +1606,14 @@ main_menu() {
             ;;
         7)
             remove_mekopr
+            # remove_mekopr завершает скрипт через exit
             ;;
         8)
             echo ""
             remove_iptables_rules
             echo ""
-            read -rsn1 -p "  Нажмите любую клавишу для возврата в меню..."
+            echo -e "  ${GRAY}Нажмите любую клавишу для возврата в меню...${NC}"
+            read -rsn1
             ;;
         0 | q | Q)
             echo ""
