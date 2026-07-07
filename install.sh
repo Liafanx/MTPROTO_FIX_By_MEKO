@@ -71,7 +71,7 @@ export BASE_URL
 echo -e "  ${BOLD}Загрузка файлов...${NC}"
 echo ""
 
-printf "%s\n" "${FILES[@]}" | xargs -P 4 -I {} bash -c 'download_file "$@"' _ {}
+printf "%s\n" "${FILES[@]}" | xargs -P 6 -I {} bash -c 'download_file "$@"' _ {}
 
 # ── Установка прав и создание ссылки ────────────────────────
 echo ""
