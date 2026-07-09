@@ -969,7 +969,7 @@ if ! iptables -t filter -C INPUT -j "$CHAIN" 2>/dev/null; then
 fi
 
 # ── 1. Маркировка iOS в mangle ──────────────────────────────
-iptables -t mangle -A PREROUTING -m u32 --u32 "32 & 0x000FFFFF = 0x0002FFFF && 40 & 0xFF000000 = 0x02000000 && 44 & 0xFFFF0000 = 0x01030000 && 48 & 0xFFFFFF00 = 0x01010800 && 60 & 0xFFFFFFFF = 0x04020000" -j MARK --set-mark 0x400
+iptables -t mangle -A PREROUTING -m u32 --u32 "32 & 0x00FFFFFF = 0x0002FFFF && 40 & 0xFF000000 = 0x02000000 && 44 & 0xFFFF0000 = 0x01030000 && 48 & 0xFFFFFF00 = 0x01010800 && 60 & 0xFFFFFFFF = 0x04020000" -j MARK --set-mark 0x400
 
 # ── Проходим по каждому порту ──────────────────────────────
 IFS=',' read -ra PORT_ARRAY <<< "$PORTS"
@@ -1164,7 +1164,7 @@ get_online_count() {
 show_header() {
     clear_screen
     echo ""
-    echo -e "  ${NC}${BOLD}MEKO ${CYAN}${BOLD}| ${NC}${BOLD}MTProto Launcher  v1.67${NC}"
+    echo -e "  ${NC}${BOLD}MEKO ${CYAN}${BOLD}| ${NC}${BOLD}MTProto Launcher  v1.68${NC}"
     echo -e "  ${DIM}===========================${NC}"
     echo ""
 
